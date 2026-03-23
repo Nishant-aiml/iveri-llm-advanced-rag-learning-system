@@ -1,0 +1,1491 @@
+// ============================================================
+// IVERI LLM — Frontend Logic
+// ============================================================
+
+// ── State ────────────────────────────────────────────────────
+const STATE = {
+  userId:   localStorage.getItem('iveri_uid')  || null,
+  username: localStorage.getItem('iveri_name') || null,
+  email:    localStorage.getItem('iveri_email')|| null,
+  docId:    null,
+  xp: 0, level: 1, streak: 0,
+  currentQuiz: null,
+  _flashcards: [], _fcIdx: 0,
+};
+
+// ── Boot ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (STATE.userId) {
+    updateUserUI();
+    smartRoute();
+    fetchScore();
+  } else {
+    showLogin();
+  }
+});
+
+// ── AUTH VIEW TOGGLES ─────────────────────────────────────────
+function showLogin()    { s('authView','flex'); s('loginCard','block'); s('registerCard','none'); clearAuthErrors(); }
+function showRegister() { s('authView','flex'); s('loginCard','none'); s('registerCard','block'); clearAuthErrors(); }
+function clearAuthErrors() {
+  ['loginEmailErr','loginPwErr','loginGlobalErr','regNameErr','regEmailErr','regPwErr','regConfirmErr','regGlobalErr']
+    .forEach(id => { const e=el(id); if(e) e.textContent=''; });
+}
+
+// ── SHOW UPLOAD / APP ─────────────────────────────────────────
+function showUpload() {
+  s('authView','none'); s('uploadView','flex'); s('appShell','none');
+  window.scrollTo(0, 0);
+}
+function showApp() {
+  s('authView','none'); s('uploadView','none'); s('appShell','flex');
+  window.scrollTo(0, 0);
+  go('library');
+}
+function doLogout() {
+  ['iveri_uid','iveri_name','iveri_email'].forEach(k => localStorage.removeItem(k));
+  Object.assign(STATE, {userId:null, username:null, email:null, docId:null});
+  showLogin();
+}
+function newDoc() { STATE.docId=null; go('library'); }
+
+// Smart routing: if user has existing docs, go to Library; else show Upload
+async function smartRoute() {
+  try {
+    if (STATE.userId) {
+      const d = await get(`documents/${encodeURIComponent(STATE.userId)}`);
+      const docs = d.documents || [];
+      if (docs.length > 0) {
+        showApp();  // goes to Library
+        return;
+      }
+    }
+  } catch(e) { /* ignore */ }
+  showUpload();
+}
+
+// ── REGISTER ──────────────────────────────────────────────────
+async function doRegister() {
+  clearAuthErrors();
+  const name  = val('regName').trim();
+  const email = val('regEmail').trim();
+  const pw    = val('regPassword');
+  const cpw   = val('regConfirm');
+
+  let ok = true;
+  if (!name || name.length < 2) { setErr('regNameErr','Enter your full name'); ok=false; }
+  if (!isEmail(email)) { setErr('regEmailErr','Enter a valid email address'); ok=false; }
+  if (pw.length < 8)   { setErr('regPwErr','Password must be at least 8 characters'); ok=false; }
+  if (pw !== cpw)      { setErr('regConfirmErr','Passwords do not match'); ok=false; }
+  if (!ok) return;
+
+  setBtnLoading('registerBtn', true);
+  try {
+    const res = await api('register', { username: email, name, email, password: pw });
+    STATE.userId   = res.user_id;
+    STATE.username = res.username || name;
+    STATE.email    = email;
+    persist();
+    updateUserUI();
+    smartRoute();
+  } catch(e) { setErr('regGlobalErr', e.message); }
+  finally { setBtnLoading('registerBtn', false); }
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────
+async function doLogin() {
+  clearAuthErrors();
+  const email = val('loginEmail').trim();
+  const pw    = val('loginPassword');
+
+  let ok = true;
+  if (!isEmail(email)) { setErr('loginEmailErr','Enter a valid email address'); ok=false; }
+  if (!pw)             { setErr('loginPwErr','Password is required'); ok=false; }
+  if (!ok) return;
+
+  setBtnLoading('loginBtn', true);
+  try {
+    const res = await api('login', { username: email, password: pw });
+    STATE.userId   = res.user_id;
+    STATE.username = res.username || email;
+    STATE.email    = email;
+    STATE.xp=res.xp; STATE.level=res.level; STATE.streak=res.streak;
+    persist();
+    updateUserUI();
+    // Hide login immediately, then route
+    s('authView','none');
+    window.scrollTo(0, 0);
+    await smartRoute();
+  } catch(e) { setErr('loginGlobalErr', e.message); }
+  finally { setBtnLoading('loginBtn', false); }
+}
+
+// ── PASSWORD STRENGTH ─────────────────────────────────────────
+function checkPwStrength(pw) {
+  const bar   = el('pwStrength');
+  const fill  = el('pwFill');
+  const label = el('pwLabel');
+  if (!bar) return;
+  if (!pw) { bar.style.display='none'; return; }
+  bar.style.display='flex';
+  let score = 0;
+  if (pw.length >= 8)         score++;
+  if (/[A-Z]/.test(pw))       score++;
+  if (/[0-9]/.test(pw))       score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const map = [
+    { w:'20%', c:'#DC2626', t:'Weak' },
+    { w:'45%', c:'#F59E0B', t:'Fair' },
+    { w:'70%', c:'#3B82F6', t:'Good' },
+    { w:'100%',c:'#16A34A', t:'Strong' },
+  ];
+  const s = map[Math.min(score-1, 3)];
+  fill.style.width      = s.w;
+  fill.style.background = s.c;
+  label.style.color     = s.c;
+  label.textContent     = s.t;
+}
+
+// ── TOGGLE PASSWORD VISIBILITY ────────────────────────────────
+function togglePw(inputId, btn) {
+  const inp = el(inputId);
+  const show = inp.type === 'password';
+  inp.type   = show ? 'text' : 'password';
+  btn.textContent = show ? 'Hide' : 'Show';
+}
+
+// ── USER UI ───────────────────────────────────────────────────
+function updateUserUI() {
+  const n = STATE.username || STATE.email || 'User';
+  const initial = n.charAt(0).toUpperCase();
+  setText('sidebarName', n);
+  setText('sidebarMeta', `${STATE.xp} XP · Lv ${STATE.level}`);
+  setText('sidebarAvatar', initial);
+  setText('topbarAvatar', initial);
+  setText('xpTopbar', `${STATE.xp} XP`);
+  setText('lvTopbar', STATE.level);
+}
+
+function updateStats(xp, level, streak) {
+  STATE.xp=xp; STATE.level=level; STATE.streak=streak;
+  updateUserUI();
+}
+
+async function fetchScore() {
+  if (!STATE.userId) return;
+  try {
+    const d = await get(`score?user_id=${STATE.userId}`);
+    updateStats(d.xp, d.level, d.streak);
+  } catch{}
+}
+
+// ── UPLOAD ───────────────────────────────────────────────────
+const fileInput = document.getElementById('fileInput');
+const dropZone  = document.getElementById('uploadDropZone');
+
+if (dropZone) {
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--primary)'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor=''; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.style.borderColor='';
+    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+  });
+}
+if (fileInput) fileInput.addEventListener('change', e => e.target.files[0] && uploadFile(e.target.files[0]));
+
+async function uploadFile(file) {
+  setUploadFeedback(`Uploading "${file.name}"…`);
+  setProgress(20, 'Uploading…');
+
+  const fname = el('topbarFilename');
+  if (fname) fname.textContent = file.name;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('user_id', STATE.userId || 'guest');
+
+  try {
+    const res = await fetch('/api/upload', { method:'POST', body:fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    STATE.docId = data.doc_id;
+    STATE.docFilename = data.filename || file.name;
+    if (data.status === 'ready') {
+      onDocReady();
+    } else {
+      pollStatus();
+    }
+  } catch(e) {
+    setUploadFeedback(e.message, true);
+    s('progressSection','none');
+  }
+}
+
+async function pollStatus() {
+  setProgress(55, 'Processing document…');
+  try {
+    const d = await get(`status/${STATE.docId}`);
+    if (d.status === 'ready') {
+      setProgress(100, 'Done!');
+      setTimeout(onDocReady, 700);
+    } else if (d.status === 'failed') {
+      throw new Error(d.error || 'Processing failed');
+    } else {
+      const stageMap = { uploaded:40, parsed:60, structured:75, embedded:90, indexed:98 };
+      setProgress(stageMap[d.processing_stage] || 55, `Stage: ${d.processing_stage || 'processing'}…`);
+      setTimeout(pollStatus, 3000);
+    }
+  } catch(e) {
+    setUploadFeedback(e.message, true);
+    s('progressSection','none');
+  }
+}
+
+function onDocReady() {
+  fetchScore();
+  const sb = el('topbarStatus');
+  if (sb) sb.textContent = 'READY';
+  const fn = el('topbarFilename');
+  if (fn) fn.textContent = STATE.docFilename || STATE.docId || 'Document';
+  // If we're on the separate upload view, switch to app
+  if (el('uploadView')?.style.display !== 'none') {
+    showApp();
+  } else {
+    // Already inside app — just refresh library
+    initLibrary();
+  }
+}
+
+function setUploadFeedback(msg, isErr=false) {
+  const fb = el('uploadFeedback');
+  if (!fb) return;
+  fb.textContent = msg;
+  fb.className = 'upload-feedback' + (isErr ? ' error' : '');
+}
+
+function setProgress(pct, label) {
+  s('progressSection','block');
+  const fill = el('progressFill');
+  const lbl  = el('progressLabel');
+  if (fill) fill.style.width = pct+'%';
+  if (lbl)  lbl.textContent  = label || '';
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────
+let _searchMode = 'keyword';
+
+function go(viewId) {
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === viewId);
+  });
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('view-active'));
+  const vEl = el('view' + cap(viewId));
+  if (vEl) vEl.classList.add('view-active');
+
+  if (viewId === 'quiz'       && needsLoad('quizContent'))       initQuiz();
+  if (viewId === 'mocktest'   && needsLoad('mocktestContent'))   initMockTest();
+  if (viewId === 'flashcards' && needsLoad('flashcardsContent')) initFlashcards();
+  if (viewId === 'summary'    && needsLoad('summaryContent'))    initSummary();
+  if (viewId === 'leaderboard') initLeaderboard();
+  if (viewId === 'weakness')    initWeakness();
+  if (viewId === 'library')     initLibrary();
+  if (viewId === 'evaluation')  resetEvaluation();
+}
+
+function needsLoad(containerId) {
+  const c = el(containerId);
+  return c && c.querySelector('.skeleton-block');
+}
+
+function toggleSidebar() {
+  el('sidebar')?.classList.toggle('open');
+}
+
+// ── ASK AI ───────────────────────────────────────────────────
+async function sendMsg() {
+  const input = el('chatInput');
+  const q = input.value.trim();
+  if (!q || !STATE.docId) return;
+  input.value = '';
+
+  appendMsg('user', q);
+  const aiId = 'ai-' + Date.now();
+  appendMsg('ai', `<span class="btn-spinner btn-spinner-dark"></span>`, aiId);
+
+  try {
+    const d = await api('ask', { doc_id:STATE.docId, question:q, user_id:STATE.userId });
+    const sources = (d.source_chunks||[])
+      .map(c=>c.section.replace(/\*\*/g,''))
+      .filter(s=>s.length>2);
+    const srcHtml = sources.length
+      ? `<div class="msg-sources">${[...new Set(sources)].map(s=>`<span class="source-chip">📎 ${s}</span>`).join('')}</div>`
+      : '';
+    updateMsg(aiId, renderMd(d.answer) + srcHtml);
+    fetchScore();
+  } catch(e) {
+    updateMsg(aiId, `<span style="color:var(--danger)">${e.message}</span>`);
+  }
+}
+
+function appendMsg(role, html, id='') {
+  const box = el('chatMessages');
+  const empty = box.querySelector('.chat-empty');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = `msg msg-${role}`;
+  if (id) div.id = id;
+  div.innerHTML = `<div class="msg-bubble">${html}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function updateMsg(id, html) {
+  const m = el(id);
+  if (m) { m.querySelector('.msg-bubble').innerHTML = html; el('chatMessages').scrollTop = 9999; }
+}
+
+// ── QUIZ ─────────────────────────────────────────────────────
+async function initQuiz() {
+  if (!requireDoc('quizContent')) return;
+  await loadQuizType('quiz', 'quizContent');
+}
+async function initMockTest() {
+  if (!requireDoc('mocktestContent')) return;
+  await loadQuizType('mock_test', 'mocktestContent');
+}
+
+async function loadQuizType(type, containerId) {
+  const container = el(containerId);
+  container.innerHTML = skeletonBlocks(3);
+  try {
+    const d = await api('quiz/start', { doc_id:STATE.docId, user_id:STATE.userId, quiz_type:type });
+    STATE.currentQuiz = d.questions;
+    container.innerHTML = renderQuiz(d.questions, type==='mock_test');
+  } catch(e) {
+    container.innerHTML = errorState(e.message);
+  }
+}
+
+function renderQuiz(questions, isMock=false) {
+  if (!questions?.length) return errorState('No questions generated.');
+
+  const qHtml = questions.map((q,i) => {
+    const qText = q.q || q.question || '';
+    const qDiff = q.difficulty || 'easy';
+    const qOpts = q.options || [];
+    return `
+    <div class="q-card" id="qc_${i}">
+      <div class="q-card-header">
+        <div class="q-text">${i+1}. ${esc(qText)}</div>
+        <span class="q-badge badge-${qDiff.toLowerCase()}">${qDiff.toUpperCase()}</span>
+      </div>
+      <div class="q-options">
+        ${qOpts.map((opt,j) => `
+          <div class="q-option" id="opt_${i}_${j}" onclick="selectOpt(${i},${j})">
+            <input type="radio" name="q${i}" value="${esc(opt)}" />${esc(opt)}
+          </div>
+        `).join('')}
+      </div>
+      <div class="q-explanation" id="exp_${i}"></div>
+    </div>
+  `}).join('');
+
+  return `<div>${qHtml}
+    <button class="btn btn-primary submit-quiz-btn" onclick="submitQuiz('${isMock?'mocktestContent':'quizContent'}')">
+      Submit ${isMock?'Mock Test':'Quiz'}
+    </button></div>`;
+}
+
+function selectOpt(qi, oi) {
+  // clear selected visualson for this question
+  document.querySelectorAll(`[id^="opt_${qi}_"]`).forEach(d => d.classList.remove('selected'));
+  el(`opt_${qi}_${oi}`).classList.add('selected');
+  el(`qc_${qi}`).querySelector('input:checked') && null;
+  // Also check radio
+  const radio = el(`opt_${qi}_${oi}`).querySelector('input');
+  if (radio) { radio.checked = true; }
+}
+
+async function submitQuiz(containerId) {
+  if (!STATE.currentQuiz?.length) return;
+  const answers = STATE.currentQuiz.map((_,i) => {
+    const selected = document.querySelector(`[id^="opt_${i}_"].selected`);
+    return selected ? selected.querySelector('input')?.value || '' : '';
+  });
+
+  try {
+    const d = await api('quiz/submit', {
+      doc_id: STATE.docId, user_id: STATE.userId,
+      questions: STATE.currentQuiz, answers
+    });
+
+    // details array from evaluate_quiz
+    const evals = d.details || d.evaluations || [];
+    STATE.currentQuiz.forEach((q,i) => {
+      const res = evals[i] || {};
+      const correctAns = (q.answer || res.correct_answer || '').trim().toUpperCase();
+      document.querySelectorAll(`[id^="opt_${i}_"]`).forEach(div => {
+        div.style.pointerEvents='none';
+        const v = (div.querySelector('input')?.value || '').trim();
+        // Match by letter prefix (e.g. "A)" vs answer "A") or full text
+        const optLetter = v.charAt(0).toUpperCase();
+        if (optLetter === correctAns || v === res.correct_answer) {
+          div.classList.add('correct');
+        } else if (div.classList.contains('selected') && !res.is_correct) {
+          div.classList.add('wrong');
+        }
+      });
+      const expEl = el(`exp_${i}`);
+      if (expEl && res.correct_answer) {
+        expEl.innerHTML = `<strong>Correct Answer:</strong> ${esc(res.correct_answer)}`;
+        expEl.style.display='block';
+      }
+    });
+
+    // Prepend score banner
+    const pct = Math.round(d.accuracy*100);
+    const banner = document.createElement('div');
+    banner.className='score-banner';
+    banner.innerHTML = `
+      <div class="score-num">${d.correct}<span> / ${d.total}</span></div>
+      <div class="score-msg">You scored ${pct}%${pct>=80?' 🎉':pct>=50?' Keep it up!':' Keep practicing!'}</div>
+    `;
+    el(containerId).querySelector('div').prepend(banner);
+    el(containerId).querySelector('.submit-quiz-btn')?.remove();
+    fetchScore();
+  } catch(e) { alert('Submission failed: ' + e.message); }
+}
+
+// ── FLASHCARDS ───────────────────────────────────────────────
+async function initFlashcards() {
+  if (!requireDoc('flashcardsContent')) return;
+  const container = el('flashcardsContent');
+  container.innerHTML = `<div class="skeleton-block tall"></div>`;
+  try {
+    const d = await api('generate', { doc_id:STATE.docId, user_id:STATE.userId, content_type:'flashcards' });
+    let cards = d.flashcards || d.content?.flashcards || [];
+
+    // If API returned raw text, try to parse it
+    if (!cards.length && d.raw) {
+      cards = parseRawFlashcards(d.raw);
+    }
+
+    if (!cards?.length) throw new Error('No flashcards generated. Try uploading a more detailed document.');
+    STATE._flashcards = cards; STATE._fcIdx = 0;
+    renderFcView(container);
+  } catch(e) { container.innerHTML = errorState(e.message); }
+}
+
+function parseRawFlashcards(raw) {
+  const cards = [];
+  // Try JSON extraction first
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.flashcards) return parsed.flashcards;
+    }
+  } catch(e) {}
+
+  // Try Q: / A: pattern
+  const pairs = raw.split(/\n\s*\n/).filter(b => b.trim());
+  for (const block of pairs) {
+    const qMatch = block.match(/(?:Q|Question|Front)[:\s]+(.+)/i);
+    const aMatch = block.match(/(?:A|Answer|Back)[:\s]+(.+)/i);
+    if (qMatch && aMatch) cards.push({ q: qMatch[1].trim(), a: aMatch[1].trim() });
+  }
+
+  // Try numbered pattern: 1. Question - Answer
+  if (!cards.length) {
+    const lines = raw.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      const m = line.match(/^\d+[\.\)]\s*(.+?)\s*[-–—]\s*(.+)$/);
+      if (m) cards.push({ q: m[1].trim(), a: m[2].trim() });
+    }
+  }
+  return cards;
+}
+
+function renderFcView(container) {
+  const cards = STATE._flashcards;
+  const idx   = STATE._fcIdx;
+  const card  = cards[idx];
+  container.innerHTML = `
+    <div class="fc-wrap">
+      <div class="fc" id="fcCard" onclick="this.classList.toggle('flipped')">
+        <div class="fc-face fc-front">${esc(card.q || card.front || '')}</div>
+        <div class="fc-face fc-back">
+          ${esc(card.a || card.back || '')}
+        </div>
+      </div>
+    </div>
+    <div class="fc-controls">
+      <button class="btn btn-ghost btn-sm" onclick="fcNav(-1)" ${idx===0?'disabled':''}>← Prev</button>
+      <span class="fc-counter">${idx+1} / ${cards.length}</span>
+      <button class="btn btn-primary btn-sm" onclick="fcNav(1)" ${idx===cards.length-1?'disabled':''}>Next →</button>
+    </div>
+    <p style="text-align:center;font-size:13px;color:var(--text-3);margin-top:12px">Click the card to flip</p>
+  `;
+}
+
+function fcNav(dir) {
+  const newIdx = STATE._fcIdx + dir;
+  if (newIdx < 0 || newIdx >= STATE._flashcards.length) return;
+  STATE._fcIdx = newIdx;
+  renderFcView(el('flashcardsContent'));
+}
+
+// ── SUMMARY ──────────────────────────────────────────────────
+async function initSummary() {
+  if (!requireDoc('summaryContent')) return;
+  const container = el('summaryContent');
+  container.innerHTML = `<div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block tall"></div>`;
+  try {
+    const d = await api('generate', { doc_id:STATE.docId, user_id:STATE.userId, content_type:'summary' });
+    // summary endpoint returns {summary: "...", bullets: [...]} or {content: "..."}
+    let html = '';
+    if (d.summary) {
+      html = `<p>${esc(d.summary)}</p>`;
+      if (d.bullets?.length) {
+        html += '<ul>' + d.bullets.map(b => `<li>${esc(b)}</li>`).join('') + '</ul>';
+      }
+    } else {
+      html = renderMd(d.content || d.raw || 'No summary generated.');
+    }
+    container.innerHTML = `<div class="summary-box">${html}</div>`;
+  } catch(e) { container.innerHTML = errorState(e.message); }
+}
+
+// ── LEADERBOARD ──────────────────────────────────────────────
+async function initLeaderboard() {
+  const container = el('leaderboardContent');
+  container.innerHTML = `<div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div>`;
+  try {
+    const d = await get('leaderboard');
+    const me = STATE.username || STATE.email || '';
+    if (!d.leaderboard?.length) {
+      container.innerHTML = '<div class="empty-state"><p>No entries yet — complete a quiz to appear here!</p></div>';
+      return;
+    }
+    container.innerHTML = `<div class="lb-list">` +
+      d.leaderboard.map(u => {
+        const isMe = u.username === me || u.user_id === STATE.userId;
+        const rankClass = u.rank <= 3 ? `rank-${u.rank}` : '';
+        return `<div class="lb-row ${rankClass} ${isMe?'is-me':''}">
+          <div class="lb-rank">${rankEmoji(u.rank)}</div>
+          <div class="lb-name">${esc(u.username||u.user_id)} ${isMe?'<span class="lb-you-tag">You</span>':''}</div>
+          <div class="lb-xp">${u.daily_xp} XP</div>
+        </div>`;
+      }).join('') + `</div>
+      <p style="text-align:center;font-size:12px;color:var(--text-3);margin-top:16px">Resets daily at midnight</p>`;
+  } catch(e) { container.innerHTML = errorState(e.message); }
+}
+
+function rankEmoji(r) {
+  if (r===1) return '🥇';
+  if (r===2) return '🥈';
+  if (r===3) return '🥉';
+  return `#${r}`;
+}
+
+// ── UTILITIES ─────────────────────────────────────────────────
+
+function el(id)   { return document.getElementById(id); }
+function val(id)  { return el(id)?.value || ''; }
+function s(id, d) { const e=el(id); if(e) e.style.display=d; }
+function setText(id, text) { const e=el(id); if(e) e.textContent=text; }
+function setErr(id, msg)   { const e=el(id); if(e) e.textContent=msg; }
+function cap(str)  { return str.charAt(0).toUpperCase() + str.slice(1); }
+function isEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+function esc(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function persist() {
+  localStorage.setItem('iveri_uid',   STATE.userId||'');
+  localStorage.setItem('iveri_name',  STATE.username||'');
+  localStorage.setItem('iveri_email', STATE.email||'');
+}
+
+function setBtnLoading(id, loading) {
+  const btn = el(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  const t = btn.querySelector('.btn-text');
+  const l = btn.querySelector('.btn-loading');
+  if (t) t.style.display = loading ? 'none' : '';
+  if (l) l.style.display = loading ? '' : 'none';
+  if (loading && !l) btn.innerHTML = `<span class="btn-spinner"></span>`;
+}
+
+function skeletonBlocks(n) {
+  return Array.from({length:n}, ()=>'<div class="skeleton-block"></div>').join('');
+}
+
+function errorState(msg) {
+  return `<div class="empty-state">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <p>${esc(msg)}</p>
+  </div>`;
+}
+
+// Very light markdown renderer
+function renderMd(text) {
+  if (typeof text !== 'string') return String(text||'');
+  let h = esc(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,     '<em>$1</em>')
+    .replace(/`(.*?)`/g,       '<code>$1</code>')
+    .replace(/^### (.+)$/gm,   '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,    '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,     '<h1>$1</h1>')
+    .replace(/^- (.+)$/gm,     '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n\n/g,           '</p><p>')
+    .replace(/\n/g,             '<br>');
+  if (!h.startsWith('<h') && !h.startsWith('<ul')) h = `<p>${h}</p>`;
+  return h;
+}
+
+// ── API HELPERS ───────────────────────────────────────────────
+async function api(endpoint, body) {
+  const res = await fetch('/api/' + endpoint, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+
+async function get(endpoint) {
+  const res = await fetch('/api/' + endpoint);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+
+// ── SEARCH ENGINE ─────────────────────────────────────────────
+function setSearchMode(mode, btn) {
+  _searchMode = mode;
+  document.querySelectorAll('.mode-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  el('searchModeLabel').innerHTML = `Mode: <strong>${mode}</strong>`;
+}
+
+async function doSearch() {
+  const q = el('searchInput').value.trim();
+  if (!q) return;
+
+  // Auto-select first available doc if none selected
+  if (!STATE.docId) {
+    try {
+      const ud = await get(`documents/${encodeURIComponent(STATE.userId)}`);
+      const docs = (ud.documents || []).filter(d => d.status === 'ready');
+      if (docs.length) {
+        STATE.docId = docs[0].doc_id;
+        STATE.docFilename = docs[0].filename || docs[0].doc_id;
+        const fn = el('topbarFilename');
+        if (fn) fn.textContent = STATE.docFilename;
+        const sb = el('topbarStatus');
+        if (sb) sb.textContent = 'READY';
+      } else {
+        alert('No processed documents found. Please upload a document first.');
+        return;
+      }
+    } catch(e) {
+      alert('Please select a document from the Library first.');
+      return;
+    }
+  }
+
+  const btn = el('searchBtn');
+  btn.disabled = true; btn.textContent = 'Searching…';
+  el('searchResults').innerHTML = skeletonBlocks(3);
+
+  try {
+    const d = await api('search', { doc_id: STATE.docId, query: q, mode: _searchMode, user_id: STATE.userId });
+    renderSearchResults(d, q);
+  } catch(e) {
+    el('searchResults').innerHTML = errorState(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Search';
+  }
+}
+
+function renderSearchResults(d, query) {
+  const mode = d.mode || _searchMode;
+  const results = d.results || [];
+  const answer  = d.answer || '';
+  const conf    = d.confidence;
+  const sources = d.sources || [];
+  const qInfo   = d.query_info || {};
+
+  let html = '';
+
+  // Meta bar
+  html += `<div class="sr-meta">
+    <span class="mode-badge mode-${mode}">${mode.toUpperCase()}</span>
+    ${qInfo.query_type ? `<span class="sr-chip">Type: ${qInfo.query_type}</span>` : ''}
+    ${qInfo.complexity ? `<span class="sr-chip">Complexity: ${qInfo.complexity}</span>` : ''}
+    <span class="sr-chip">${results.length} result${results.length !== 1 ? 's' : ''}</span>
+  </div>`;
+
+  // "Did you mean?" typo correction suggestion
+  if (d.did_you_mean) {
+    html += `<div class="sr-typo-box">
+      <span class="sr-typo-icon">💡</span>
+      <span>Showing results for <a href="#" onclick="event.preventDefault(); el('searchInput').value='${esc(d.did_you_mean)}'; doSearch();" class="sr-typo-link">${esc(d.did_you_mean)}</a></span>
+      <span class="sr-typo-original">Search instead for: <em>${esc(d.original_query || query)}</em></span>
+    </div>`;
+  }
+
+  // AI Answer (only in AI mode)
+  if (answer) {
+    const confScore = typeof conf === 'object' ? conf.score : conf;
+    const confLevel = typeof conf === 'object' ? conf.level : (confScore > 0.7 ? 'high' : confScore > 0.4 ? 'medium' : 'low');
+    html += `<div class="sr-ai-answer">
+      <div class="sr-ai-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        AI Answer
+        <span class="conf-badge conf-${confLevel}">${confLevel} confidence${confScore ? ' · ' + Math.round(confScore * 100) + '%' : ''}</span>
+      </div>
+      <div class="sr-ai-body">${renderMd(answer)}</div>
+      ${sources.length ? `<div class="sr-sources">${sources.map(s => `<span class="source-chip">📎 ${esc(s.section || s)}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  // Google-like result cards
+  if (results.length) {
+    const docName = STATE.docFilename || 'Document';
+    html += `<div class="sr-results-list">`;
+    results.forEach((r, i) => {
+      const title = r.section || `Section ${i + 1}`;
+      const snippet = _highlightTerms(r.text || '', query);
+      const page = r.page || 1;
+      const score = r.score || 0;
+      html += `<div class="sr-google-card">
+        <div class="sr-g-title">${esc(title)}</div>
+        <div class="sr-g-url">📄 ${esc(docName)} · Page ${page} · Score: ${score}</div>
+        <div class="sr-g-snippet">${snippet}</div>
+      </div>`;
+    });
+    html += `</div>`;
+  } else if (!answer) {
+    html += `<div class="empty-state"><p>No results found for your query.</p></div>`;
+  }
+
+  el('searchResults').innerHTML = html;
+}
+
+function _highlightTerms(text, query) {
+  if (!query || !text) return esc(text);
+  const escaped = esc(text);
+  const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+  let result = escaped;
+  terms.forEach(term => {
+    const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    result = result.replace(regex, '<strong class="sr-highlight">$1</strong>');
+  });
+  return result;
+}
+
+// ── WEAKNESS DASHBOARD ─────────────────────────────────────────
+async function initWeakness() {
+  const container = el('weaknessContent');
+  container.innerHTML = skeletonBlocks(3);
+  try {
+    const d = await get(`weakness/${encodeURIComponent(STATE.userId)}`);
+    const weak   = d.weak_topics || d.weak || [];
+    const allTop = d.all_topics  || d.scores || [];
+    const studyPlan = d.study_plan || null;
+    renderWeakness(container, weak, allTop, studyPlan);
+  } catch(e) {
+    container.innerHTML = errorState('Could not load weakness data: ' + e.message);
+  }
+}
+
+function renderWeakness(container, weak, allTopics, studyPlan) {
+  if (!allTopics.length && !weak.length) {
+    container.innerHTML = `<div class="empty-state">
+      <p>No topic data yet. Complete a quiz first to see your weakness analysis!</p>
+      <button class="btn btn-primary btn-sm" onclick="go('quiz')" style="margin-top:12px">Take a Quiz</button>
+    </div>`;
+    return;
+  }
+
+  let html = '';
+
+  // Study plan overview
+  if (studyPlan && studyPlan.status === 'needs_work') {
+    html += `<div class="eval-card" style="margin-bottom:20px;border-left:4px solid var(--primary)">
+      <h4>📚 Study Plan</h4>
+      <p style="font-size:13px;color:var(--text-2)">You have <strong>${studyPlan.total_weak}</strong> weak topic(s)${studyPlan.critical_count ? `, <strong style="color:var(--danger)">${studyPlan.critical_count} critical</strong>` : ''}. Focus on these in order:</p>
+      <div style="margin-top:8px">
+        ${(studyPlan.plan || []).map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+          <span style="background:var(--primary);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${p.order}</span>
+          <span style="font-weight:600">${esc(p.topic)}</span>
+          <span style="font-size:12px;color:var(--text-3)">${Math.round((p.accuracy||0)*100)}% accuracy • ~${p.estimated_sessions} session(s)</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Summary cards
+  const total = allTopics.length;
+  const strongCount = allTopics.filter(t => t.status === 'strong').length;
+  const weakCount   = allTopics.filter(t => t.status === 'weak').length;
+  html += `<div class="weakness-summary">
+    <div class="ws-card ws-card-green"><div class="ws-num">${strongCount}</div><div class="ws-label">Strong Topics</div></div>
+    <div class="ws-card ws-card-blue"><div class="ws-num">${total - strongCount - weakCount}</div><div class="ws-label">Moderate Topics</div></div>
+    <div class="ws-card ws-card-red"><div class="ws-num">${weakCount}</div><div class="ws-label">Weak Topics</div></div>
+  </div>`;
+
+  // Weak topics first
+  if (weak.length) {
+    html += `<h3 class="weakness-section-title">⚠️ Topics Needing Attention</h3>`;
+    weak.forEach(t => {
+      const pct = Math.round(t.accuracy * 100);
+      const trend = t.trend || {};
+      const advice = t.advice || {};
+      const trendIcon = trend.direction === 'improving' ? '📈' : trend.direction === 'declining' ? '📉' : '→';
+      html += `<div class="topic-card topic-weak">
+        <div class="topic-header">
+          <span class="topic-name">${esc(t.topic)}</span>
+          <span class="topic-trend">${trendIcon} ${trend.direction || 'stable'}</span>
+        </div>
+        <div class="topic-bar-wrap">
+          <div class="topic-bar"><div class="topic-bar-fill bar-weak" style="width:${pct}%"></div></div>
+          <span class="topic-pct">${pct}%</span>
+        </div>
+        <div class="topic-detail">${t.correct}/${t.total} correct</div>
+        ${advice.issue ? `<div style="margin-top:8px;padding:10px;background:var(--bg-2);border-radius:8px">
+          <div style="font-weight:600;font-size:13px;color:var(--danger)">${esc(advice.issue)}</div>
+          <div style="font-size:12px;color:var(--text-3);margin:4px 0">${esc(advice.reason || '')}</div>
+          ${advice.trend_note ? `<div style="font-size:12px;margin:4px 0">${esc(advice.trend_note)}</div>` : ''}
+          ${advice.improvement ? `<ul style="font-size:12px;color:var(--text-2);margin:6px 0 0 16px;padding:0">
+            ${advice.improvement.map(s => `<li style="margin:3px 0">${esc(s)}</li>`).join('')}
+          </ul>` : ''}
+        </div>` : (t.recommendation ? `<div class="topic-rec">${esc(t.recommendation)}</div>` : '')}
+      </div>`;
+    });
+  }
+
+  // All topics performance
+  if (allTopics.length) {
+    html += `<h3 class="weakness-section-title">All Topics Performance</h3>`;
+    allTopics.forEach(t => {
+      const pct = Math.round(t.accuracy * 100);
+      const colorClass = t.status === 'strong' ? 'bar-strong' : t.status === 'moderate' ? 'bar-moderate' : 'bar-weak';
+      html += `<div class="topic-card">
+        <div class="topic-header">
+          <span class="topic-name">${esc(t.topic)}</span>
+          <span class="topic-status status-${t.status || 'moderate'}">${t.status || 'moderate'}</span>
+        </div>
+        <div class="topic-bar-wrap">
+          <div class="topic-bar"><div class="topic-bar-fill ${colorClass}" style="width:${pct}%"></div></div>
+          <span class="topic-pct">${pct}%</span>
+        </div>
+        <div class="topic-detail">${t.correct}/${t.total} correct</div>
+      </div>`;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+// ── LIBRARY ───────────────────────────────────────────────────
+async function initLibrary() {
+  const container = el('libraryContent');
+  container.innerHTML = skeletonBlocks(3);
+
+  // Load user's uploaded documents
+  let userDocs = [];
+  try {
+    if (STATE.userId) {
+      const ud = await get(`documents/${encodeURIComponent(STATE.userId)}`);
+      userDocs = ud.documents || [];
+    }
+  } catch(e) { /* ignore if no docs */ }
+
+  // Also load subject library
+  let subjects = [];
+  try {
+    const lib = await get('library');
+    subjects = Array.isArray(lib) ? lib : (lib.subjects || []);
+  } catch(e) { /* ignore */ }
+
+  renderLibrary(container, userDocs, subjects);
+}
+
+function renderLibrary(container, userDocs, subjects) {
+  let html = '';
+
+  // ── Inline Upload Zone (with subject field) ──
+  html += `<div class="lib-upload-zone" id="libUploadZone">
+    <label class="lib-dropzone" id="libDropzone" for="libFileInput">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="1.75">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+      </svg>
+      <div class="lib-dropzone-text">
+        <strong>Upload New Document</strong>
+        <span>Drag & drop or click to browse — PDF or Excel, up to 20 MB</span>
+      </div>
+      <input type="file" id="libFileInput" accept=".pdf,.xlsx" hidden />
+    </label>
+    <div class="lib-upload-subject-row" id="libSubjectRow" style="display:none">
+      <span class="lib-upload-subject-label">📁 Add to Subject Folder:</span>
+      <input type="text" id="libUploadSubject" placeholder="e.g. Physics, Machine Learning" class="input" style="flex:1;min-width:160px">
+    </div>
+    <div id="libUploadFeedback" class="lib-upload-fb"></div>
+    <div id="libProgressSection" style="display:none" class="lib-progress">
+      <div class="progress-track"><div class="progress-fill" id="libProgressFill"></div></div>
+      <p class="progress-label" id="libProgressLabel">Uploading…</p>
+    </div>
+  </div>`;
+
+  // ── User's Documents ──
+  html += `<h3 style="font-size:15px;font-weight:600;margin:20px 0 12px">📄 Your Documents</h3>`;
+  if (userDocs.length) {
+    html += `<div class="library-doc-list">`;
+    userDocs.forEach(doc => {
+      const name = doc.filename || doc.doc_id;
+      const date = doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '';
+      const isActive = doc.doc_id === STATE.docId;
+      html += `<div class="lib-user-doc ${isActive ? 'lib-doc-active' : ''}">
+        <div class="lib-doc-info">
+          <span class="lib-doc-name">📑 ${esc(name)}</span>
+          ${date ? `<span class="lib-doc-date">${date}</span>` : ''}
+          <span class="lib-doc-status status-${doc.status}">${doc.status}</span>
+        </div>
+        <div class="lib-doc-actions">
+          ${doc.status === 'ready' ? `
+            <button class="btn btn-ghost btn-sm" onclick="openPdfViewer('${esc(doc.doc_id)}')">👁 View</button>
+            <button class="btn btn-primary btn-sm" onclick="activateDoc('${esc(doc.doc_id)}', '${esc(name)}')">▶ Use</button>
+            <button class="btn btn-ghost btn-sm" onclick="promptTagDoc('${esc(doc.doc_id)}', '${esc(name)}')">📁 Tag</button>
+          ` : `<span style="font-size:12px;color:var(--text-3)">Processing…</span>`}
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteDoc('${esc(doc.doc_id)}')">🗑</button>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<div class="empty-state">
+      <p>No documents uploaded yet. Upload your first PDF above to get started!</p>
+    </div>`;
+  }
+
+  // ── Subject Library (always show) ──
+  html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px">
+    <h3 style="font-size:15px;font-weight:600;margin:0">📚 Subject Library</h3>
+    <button class="btn btn-ghost btn-sm" onclick="reclassifyAll()" id="reclassifyBtn">🔄 Auto-Classify All</button>
+  </div>`;
+  if (subjects.length) {
+    html += `<div class="library-grid">`;
+    subjects.forEach(s => {
+      const subj = s.subject || s;
+      const count = s.doc_count || 0;
+      html += `<div class="lib-subject-card" onclick="toggleSubjectDocs('${esc(subj)}', this)">
+        <div class="lib-subject-icon">📚</div>
+        <div class="lib-subject-name">${esc(subj)}</div>
+        <div class="lib-subject-count">${count} doc${count !== 1 ? 's' : ''}</div>
+      </div>`;
+    });
+    html += `</div>`;
+    html += `<div id="libDocsPanel" class="lib-docs-panel"></div>`;
+  } else {
+    html += `<div class="empty-state" style="margin-bottom:16px">
+      <p>No subjects yet. Tag your documents with a subject using the 📁 Tag button above, or enter a subject when uploading.</p>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Wire up inline upload events AFTER rendering
+  _wireLibraryUpload();
+}
+
+function _wireLibraryUpload() {
+  const dropzone = el('libDropzone');
+  const fileIn   = el('libFileInput');
+  if (!dropzone || !fileIn) return;
+
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('drag-over'); });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) { _showSubjectRow(e.dataTransfer.files[0]); }
+  });
+  fileIn.addEventListener('change', e => {
+    if (e.target.files[0]) { _showSubjectRow(e.target.files[0]); }
+  });
+}
+
+// Show the subject field after file is selected, then start upload
+function _showSubjectRow(file) {
+  const row = el('libSubjectRow');
+  if (row) row.style.display = 'flex';
+  // Store the pending file on window so we can start upload
+  window._pendingUploadFile = file;
+  const fb = el('libUploadFeedback');
+  if (fb) { fb.textContent = `Selected: "${file.name}" — enter a subject folder (optional) then uploading will start in 2s…`; fb.className = 'lib-upload-fb'; }
+  // Auto-start upload after a short delay so user can type subject
+  setTimeout(() => {
+    _libUploadFile(window._pendingUploadFile);
+    window._pendingUploadFile = null;
+  }, 2500);
+}
+
+async function _libUploadFile(file) {
+  if (!file) return;
+  const fb   = el('libUploadFeedback');
+  const prog = el('libProgressSection');
+  const fill = el('libProgressFill');
+  const lbl  = el('libProgressLabel');
+  const subjectInput = el('libUploadSubject');
+  const subject = subjectInput ? subjectInput.value.trim() : '';
+
+  if (fb) { fb.textContent = `Uploading "${file.name}"…`; fb.className = 'lib-upload-fb'; }
+  if (prog) prog.style.display = 'block';
+  if (fill) fill.style.width = '20%';
+  if (lbl) lbl.textContent = 'Uploading…';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('user_id', STATE.userId || 'guest');
+
+  try {
+    const res = await fetch('/api/upload', { method:'POST', body:fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    STATE.docId = data.doc_id;
+    STATE.docFilename = data.filename || file.name;
+
+    // Auto-tag to subject library if a subject was entered
+    if (subject) {
+      try {
+        await api('library/add', { doc_id: STATE.docId, subject, title: STATE.docFilename });
+      } catch(e) { console.warn('Auto-tag failed:', e); }
+    }
+
+    if (data.status === 'ready') {
+      if (fb) { fb.textContent = '✅ Document ready!' + (subject ? ` Added to "${subject}"` : ''); fb.className = 'lib-upload-fb success'; }
+      if (fill) fill.style.width = '100%';
+      if (lbl) lbl.textContent = 'Done!';
+      setTimeout(() => { if (prog) prog.style.display = 'none'; const sr = el('libSubjectRow'); if (sr) sr.style.display = 'none'; initLibrary(); }, 800);
+      fetchScore();
+      const sbEl = el('topbarStatus');  if (sbEl) sbEl.textContent = 'READY';
+      const fnEl = el('topbarFilename'); if (fnEl) fnEl.textContent = STATE.docFilename;
+    } else {
+      _libPollStatus(fb, prog, fill, lbl, subject);
+    }
+  } catch(e) {
+    if (fb) { fb.textContent = e.message; fb.className = 'lib-upload-fb error'; }
+    if (prog) prog.style.display = 'none';
+  }
+}
+
+async function _libPollStatus(fb, prog, fill, lbl, subject) {
+  if (fill) fill.style.width = '55%';
+  if (lbl) lbl.textContent = 'Processing document…';
+  try {
+    const d = await get(`status/${STATE.docId}`);
+    if (d.status === 'ready') {
+      // Auto-tag to subject if specified
+      if (subject) {
+        try { await api('library/add', { doc_id: STATE.docId, subject, title: STATE.docFilename }); } catch(e) {}
+      }
+      if (fill) fill.style.width = '100%';
+      if (lbl) lbl.textContent = 'Done!';
+      if (fb) { fb.textContent = '✅ Document processed!' + (subject ? ` Added to "${subject}"` : ''); fb.className = 'lib-upload-fb success'; }
+      const sbEl = el('topbarStatus');  if (sbEl) sbEl.textContent = 'READY';
+      const fnEl = el('topbarFilename'); if (fnEl) fnEl.textContent = STATE.docFilename;
+      fetchScore();
+      setTimeout(() => { if (prog) prog.style.display = 'none'; const sr = el('libSubjectRow'); if (sr) sr.style.display = 'none'; initLibrary(); }, 800);
+    } else if (d.status === 'failed') {
+      throw new Error(d.error || 'Processing failed');
+    } else {
+      const stageMap = { uploaded:40, parsed:60, structured:75, embedded:90, indexed:98 };
+      if (fill) fill.style.width = (stageMap[d.processing_stage] || 55) + '%';
+      if (lbl) lbl.textContent = `Stage: ${d.processing_stage || 'processing'}…`;
+      setTimeout(() => _libPollStatus(fb, prog, fill, lbl, subject), 3000);
+    }
+  } catch(e) {
+    if (fb) { fb.textContent = e.message; fb.className = 'lib-upload-fb error'; }
+    if (prog) prog.style.display = 'none';
+  }
+}
+
+// Tag an existing doc with a subject (via prompt)
+async function promptTagDoc(docId, docName) {
+  const subject = prompt(`Enter a subject folder for "${docName}":\n(e.g. Physics, Python, Machine Learning)`);
+  if (!subject || !subject.trim()) return;
+  try {
+    await api('library/add', { doc_id: docId, subject: subject.trim(), title: docName });
+    alert(`✅ "${docName}" added to "${subject.trim()}"!`);
+    initLibrary();
+  } catch(e) {
+    alert('Failed to tag: ' + e.message);
+  }
+}
+
+// Toggle subject folder open/close
+async function toggleSubjectDocs(subject, card) {
+  const panel = el('libDocsPanel');
+  if (!panel) return;
+
+  // If already showing this subject, close it
+  if (card.classList.contains('selected')) {
+    card.classList.remove('selected');
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+    return;
+  }
+
+  document.querySelectorAll('.lib-subject-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  panel.style.display = 'block';
+  panel.innerHTML = skeletonBlocks(2);
+
+  try {
+    const d = await get(`library/${encodeURIComponent(subject)}`);
+    const docs = d.documents || d.docs || [];
+    if (!docs.length) {
+      panel.innerHTML = `<p style="padding:16px;color:var(--text-3)">No documents in "${subject}" yet.</p>`;
+      return;
+    }
+    panel.innerHTML = `<div class="lib-folder-header">
+      <h4>📁 ${esc(subject)} — ${docs.length} document${docs.length !== 1 ? 's' : ''}</h4>
+    </div>` +
+      docs.map(d => `<div class="lib-doc-row">
+        <span class="lib-doc-title">📑 ${esc(d.title || d.doc_id)}</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="activateDoc('${esc(d.doc_id)}', '${esc(d.title || d.doc_id)}')">▶ Use</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="removeFromSubject('${esc(d.doc_id)}', '${esc(subject)}')">✕</button>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    panel.innerHTML = `<p style="padding:16px;color:var(--danger)">${e.message}</p>`;
+  }
+}
+
+// Remove a doc from a subject folder
+async function removeFromSubject(docId, subject) {
+  if (!confirm(`Remove this document from "${subject}"?`)) return;
+  try {
+    await api('library/remove', { doc_id: docId, subject });
+    initLibrary();
+  } catch(e) {
+    alert('Failed to remove: ' + e.message);
+  }
+}
+
+async function reclassifyAll() {
+  const btn = el('reclassifyBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '🔄 Classifying…'; }
+  try {
+    const res = await api('library/reclassify', { user_id: STATE.userId });
+    const results = res.classified || [];
+    const classified = results.filter(r => !r.skipped && !r.error);
+    const skipped = results.filter(r => r.skipped);
+    alert(`✅ Done!\n• ${classified.length} document(s) classified into subjects\n• ${skipped.length} too generic to classify`);
+    initLibrary();  // Refresh to show new subjects
+  } catch(e) {
+    alert('Classification failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Auto-Classify All'; }
+  }
+}
+
+async function loadSubjectDocs(subject, card) {
+  toggleSubjectDocs(subject, card);
+}
+
+async function addToLibrary() {
+  if (!STATE.docId) { alert('Upload a document first'); return; }
+  const subject = el('librarySubjectInput').value.trim();
+  const title   = el('libraryTitleInput').value.trim();
+  if (!subject) { alert('Enter a subject name'); return; }
+  try {
+    await api('library/add', { doc_id: STATE.docId, subject, title });
+    el('librarySubjectInput').value = '';
+    el('libraryTitleInput').value = '';
+    initLibrary();
+    alert(`Added to "${subject}" library!`);
+  } catch(e) { alert('Failed to add: ' + e.message); }
+}
+
+function loadLibraryDoc(docId, title) {
+  activateDoc(docId, title);
+}
+
+// Activate a document as the current working document
+function activateDoc(docId, title) {
+  STATE.docId = docId;
+  STATE.docFilename = title || docId;
+  const fn = el('topbarFilename');
+  if (fn) fn.textContent = title || docId;
+  const sb = el('topbarStatus');
+  if (sb) sb.textContent = 'READY';
+  // Refresh library to show active indicator
+  initLibrary();
+  go('dashboard');
+}
+
+// Feature guard — returns true if doc is selected, shows message if not
+function requireDoc(containerId) {
+  if (STATE.docId) return true;
+  const container = el(containerId);
+  if (container) {
+    container.innerHTML = `<div class="empty-state">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <p style="margin-top:12px;font-weight:600">No document selected</p>
+      <p style="font-size:13px;color:var(--text-3)">Please select a document from the Library first.</p>
+      <button class="btn btn-primary btn-sm" onclick="go('library')" style="margin-top:12px">📚 Go to Library</button>
+    </div>`;
+  }
+  return false;
+}
+
+// ── PDF VIEWER ─────────────────────────────────────────────────
+function openPdfViewer(docId) {
+  // Use a programmatic <a> click to bypass popup blockers
+  const a = document.createElement('a');
+  a.href = `/api/pdf/${docId}`;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function closePdfViewer() {
+  const modal = el('pdfModal');
+  const frame = el('pdfFrame');
+  if (modal) modal.style.display = 'none';
+  if (frame) frame.src = '';
+}
+
+async function deleteDoc(docId) {
+  if (!confirm(`Delete this document? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`/api/doc/${docId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Delete failed');
+    if (STATE.docId === docId) {
+      STATE.docId = null;
+      STATE.docFilename = null;
+      const fn = el('topbarFilename');
+      if (fn) fn.textContent = 'No document';
+      const sb = el('topbarStatus');
+      if (sb) sb.textContent = '';
+    }
+    initLibrary();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── EVALUATION ─────────────────────────────────────────────────
+function resetEvaluation() {
+  const c = el('evaluationContent');
+  if (c && !c.innerHTML.trim()) {
+    c.innerHTML = `<div class="eval-placeholder">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.25"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <p>Choose an evaluation to run on your uploaded document.</p>
+    </div>`;
+  }
+}
+
+async function runEvaluation() {
+  if (!STATE.docId) { alert('Upload a document first'); return; }
+  const btn = el('evalBtn');
+  btn.disabled = true; btn.textContent = 'Running…';
+  el('evaluationContent').innerHTML = `<div class="eval-running">
+    <div class="eval-spinner"></div>
+    <p>Running evaluation pipeline… This may take 30–60 seconds.</p>
+  </div>`;
+  try {
+    const d = await api('evaluate/' + STATE.docId, {});
+    renderEvalResult(d, 'Evaluation Results');
+  } catch(e) {
+    el('evaluationContent').innerHTML = errorState('Evaluation failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Evaluation';
+  }
+}
+
+async function runStabilityEval() {
+  if (!STATE.docId) { alert('Upload a document first'); return; }
+  const btn = el('stableBtn');
+  btn.disabled = true; btn.textContent = 'Running 3 runs…';
+  el('evaluationContent').innerHTML = `<div class="eval-running">
+    <div class="eval-spinner"></div>
+    <p>Running stability test (3 runs with data variation)… This may take 2–3 minutes.</p>
+  </div>`;
+  try {
+    const d = await api('evaluate/stable/' + STATE.docId, {});
+    const se = d.stability_evaluation || d;
+    renderStabilityResult(se);
+  } catch(e) {
+    el('evaluationContent').innerHTML = errorState('Stability test failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Stability Test (3 runs)';
+  }
+}
+
+async function loadSystemReport() {
+  if (!STATE.docId) { alert('Upload a document first'); return; }
+  const btn = el('reportBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const d = await get(`system/report/${STATE.docId}`);
+    renderSystemReport(d);
+  } catch(e) {
+    el('evaluationContent').innerHTML = errorState('Report failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load System Report';
+  }
+}
+
+function renderEvalResult(d, title) {
+  const abl = d.ablation || {};
+  const lat = d.latency_ms || {};
+  const fail = d.failure_analysis || {};
+
+  let html = `<h3 class="eval-section-title">${title}</h3>`;
+
+  // Ablation table
+  html += `<div class="eval-card">
+    <h4>Ablation Study — Retrieval Quality</h4>
+    <table class="eval-table">
+      <thead><tr><th>System</th><th>Recall@5</th><th>MRR</th><th>Not Found Acc</th></tr></thead>
+      <tbody>
+        <tr><td>Baseline (Vector only)</td><td>${fmt(abl.baseline_recall_at_5)}</td><td>${fmt(abl.baseline_mrr)}</td><td>—</td></tr>
+        <tr><td>Hybrid (BM25+FAISS+RRF)</td><td class="${abl.hybrid_recall_at_5 >= abl.baseline_recall_at_5 ? 'eval-better' : ''}">${fmt(abl.hybrid_recall_at_5)}</td><td>${fmt(abl.hybrid_mrr)}</td><td>—</td></tr>
+        <tr><td>Reranked</td><td class="${abl.reranked_recall_at_5 >= abl.hybrid_recall_at_5 ? 'eval-better' : ''}">${fmt(abl.reranked_recall_at_5)}</td><td>${fmt(abl.reranked_mrr)}</td><td>${fmt(abl.not_found_accuracy)}</td></tr>
+      </tbody>
+    </table>
+  </div>`;
+
+  // Latency
+  if (Object.keys(lat).length) {
+    html += `<div class="eval-card">
+      <h4>Latency Breakdown</h4>
+      <div class="latency-chips">
+        ${Object.entries(lat).map(([k,v]) => `<div class="lat-chip"><span class="lat-label">${k}</span><span class="lat-val">${v}ms</span></div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Failure analysis
+  if (fail.total_failures !== undefined) {
+    html += `<div class="eval-card">
+      <h4>Failure Analysis</h4>
+      <div class="fail-chips">
+        <div class="fail-chip"><span>Total Failures</span><strong>${fail.total_failures}</strong></div>
+        ${Object.entries(fail.failure_types || {}).map(([k,v]) => `<div class="fail-chip"><span>${k}</span><strong>${v}</strong></div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  el('evaluationContent').innerHTML = html;
+}
+
+function renderStabilityResult(d) {
+  const stable    = d.stability || {};
+  const recallObj = d.recall || {};
+  const variance  = d.variance || {};
+  const variation = d.variation || {};
+  const isStable  = stable.passed || false;
+
+  let html = `<div class="eval-card">
+    <div class="stability-header">
+      <h4>Stability Test Results</h4>
+      <span class="stability-badge ${isStable ? 'badge-stable' : 'badge-unstable'}">${isStable ? '\u2713 STABLE' : '\u2717 NOT STABLE'}</span>
+    </div>
+    <div class="stability-meta">
+      <span>Runs: ${d.runs_completed || 3}</span>
+      <span>Sampling: ${variation.sampling_ratio ? Math.round(variation.sampling_ratio * 100) + '%' : '80%'} per run</span>
+      <span>Data Variation: ${variation.method || 'random sampling'}</span>
+    </div>`;
+
+  // Show recall + std table for each system
+  if (recallObj.baseline_mean !== undefined || recallObj.hybrid_mean !== undefined) {
+    html += `<table class="eval-table" style="margin-top:12px">
+      <thead><tr><th>System</th><th>Mean Recall@5</th><th>Std Dev</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Baseline</td>
+          <td>${fmt(recallObj.baseline_mean)}</td>
+          <td>${fmt(variance.baseline_std)}</td>
+          <td class="${(variance.baseline_std||0) < 0.05 ? 'eval-better' : 'eval-worse'}">${(variance.baseline_std||0) < 0.05 ? '\u2713 std < 0.05' : '\u2717 std \u2265 0.05'}</td>
+        </tr>
+        <tr>
+          <td>Hybrid</td>
+          <td>${fmt(recallObj.hybrid_mean)}</td>
+          <td>${fmt(variance.hybrid_std)}</td>
+          <td class="${(variance.hybrid_std||0) < 0.05 ? 'eval-better' : 'eval-worse'}">${(variance.hybrid_std||0) < 0.05 ? '\u2713 std < 0.05' : '\u2717 std \u2265 0.05'}</td>
+        </tr>
+        <tr>
+          <td>Reranked</td>
+          <td>${fmt(recallObj.reranked_mean)}</td>
+          <td>${fmt(variance.reranked_std)}</td>
+          <td class="${(variance.reranked_std||0) < 0.05 ? 'eval-better' : 'eval-worse'}">${(variance.reranked_std||0) < 0.05 ? '\u2713 std < 0.05' : '\u2717 std \u2265 0.05'}</td>
+        </tr>
+      </tbody>
+    </table>`;
+  }
+  html += `</div>`;
+  el('evaluationContent').innerHTML = html;
+}
+
+function renderSystemReport(d) {
+  const status = d.status || 'UNKNOWN';
+  const criteria = d.validation_criteria || {};
+  const metrics = d.metrics || {};
+
+  let html = `<div class="eval-card">
+    <div class="system-report-header">
+      <h4>System Validation Report</h4>
+      <span class="report-status ${status === 'VALIDATED' ? 'status-validated' : status === 'NEEDS_IMPROVEMENT' ? 'status-needs' : 'status-unknown'}">${status}</span>
+    </div>`;
+
+  if (Object.keys(criteria).length) {
+    html += `<div class="criteria-list">`;
+    Object.entries(criteria).forEach(([key, val]) => {
+      const passed = val.passed !== undefined ? val.passed : val;
+      const value  = val.value !== undefined ? val.value : '';
+      const note   = val.note || '';
+      html += `<div class="criterion-row ${passed ? 'crit-pass' : 'crit-fail'}">
+        <span class="crit-icon">${passed ? '\u2713' : '\u2717'}</span>
+        <span class="crit-name">${key.replace(/_/g,' ')}</span>
+        <span class="crit-val">${value}${note ? ' <em style="font-size:11px;opacity:0.7">' + note + '</em>' : ''}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (metrics.hybrid_recall_at_5 !== undefined) {
+    html += `<div style="margin-top:16px">`;
+    html += renderEvalMetricRow('Recall@5 (Hybrid)', metrics.hybrid_recall_at_5);
+    html += renderEvalMetricRow('MRR (Reranked)', metrics.reranked_mrr);
+    html += `</div>`;
+  }
+  html += `</div>`;
+  el('evaluationContent').innerHTML = html;
+}
+
+function renderEvalMetricRow(label, val) {
+  return `<div style="display:flex;align-items:center;gap:12px;margin:6px 0">
+    <span style="width:180px;font-size:13px;color:var(--text-2)">${label}</span>
+    <div style="flex:1;background:var(--border-light);border-radius:4px;height:8px">
+      <div style="width:${Math.round((val||0)*100)}%;background:var(--primary);height:8px;border-radius:4px"></div>
+    </div>
+    <span style="font-size:13px;font-weight:600;color:var(--text-1);width:40px;text-align:right">${fmt(val)}</span>
+  </div>`;
+}
+
+function fmt(v) {
+  if (v === undefined || v === null || v === '') return '—';
+  if (typeof v === 'number') return v.toFixed ? v.toFixed(3) : v;
+  return String(v);
+}
+

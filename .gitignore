@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.env
+.venv/
+
+# Environment variables
+.env
+*.env
+
+# Database
+*.db
+*.sqlite3
+
+# Uploaded files
+backend/uploads/
+backend/data/faiss_indexes/
+backend/data/chunks/
+backend/data/bm25_indexes/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyTorch / ML models (too large for git)
+*.pt
+*.pth
+*.onnx
+
+# Test outputs
+.coverage
+htmlcov/
+.pytest_cache/
