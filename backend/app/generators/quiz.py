@@ -60,6 +60,26 @@ async def generate_quiz(doc_id: str, quiz_type: str = "quiz", user_id: str = "de
         await set_cached(doc_id, quiz_type, parsed)
         return parsed
 
+    parsed_from_raw = _parse_mcq_text(result["answer"])
+    if parsed_from_raw:
+        response = {"questions": parsed_from_raw, "source_chunks": [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks]}
+        if weak_topics:
+            response["weak_topics_targeted"] = weak_topics
+        await set_cached(doc_id, quiz_type, response)
+        return response
+
+    fallback_questions = _build_fallback_quiz(chunks, count=5 if quiz_type != "mock_test" else 8)
+    if fallback_questions:
+        response = {
+            "questions": fallback_questions,
+            "source_chunks": [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks],
+            "fallback_generated": True,
+        }
+        if weak_topics:
+            response["weak_topics_targeted"] = weak_topics
+        await set_cached(doc_id, quiz_type, response)
+        return response
+
     return {"questions": [], "raw": result["answer"], "source_chunks": []}
 
 
@@ -173,4 +193,96 @@ def _parse_json_response(text: str) -> dict | None:
 
     logger.warning(f"Could not parse quiz JSON from LLM response ({len(text)} chars)")
     return None
+
+
+def _parse_mcq_text(text: str) -> list[dict]:
+    """Parse plain-text MCQs when model doesn't return strict JSON."""
+    if not text:
+        return []
+
+    blocks = re.split(r"\n\s*\n", text)
+    questions = []
+    for block in blocks:
+        q_match = re.search(r"(?:^|\n)(?:Q\d*[\):.\s-]*|Question[\s:.-]*)(.+)", block, flags=re.IGNORECASE)
+        if not q_match:
+            continue
+        q_text = q_match.group(1).strip()
+
+        options = []
+        for letter in ("A", "B", "C", "D"):
+            opt_match = re.search(rf"(?:^|\n){letter}[\)\].:\-]\s*(.+)", block, flags=re.IGNORECASE)
+            if opt_match:
+                options.append(f"{letter}) {opt_match.group(1).strip()}")
+
+        ans_match = re.search(r"(?:^|\n)(?:Answer|Correct(?:\s*Answer)?)\s*[:\-]\s*([A-D])", block, flags=re.IGNORECASE)
+        answer = ans_match.group(1).upper() if ans_match else "A"
+
+        if q_text and len(options) >= 2:
+            while len(options) < 4:
+                options.append(f"{chr(ord('A') + len(options))}) None of the above")
+            questions.append({
+                "q": q_text,
+                "options": options[:4],
+                "answer": answer,
+                "difficulty": "medium",
+                "topic": "General",
+            })
+
+    return questions
+
+
+def _build_fallback_quiz(chunks: list[dict], count: int = 5) -> list[dict]:
+    """Deterministic fallback MCQ builder from retrieved chunks."""
+    if not chunks:
+        return []
+
+    facts = []
+    for c in chunks:
+        section = c.get("section", "General")
+        text = re.sub(r"\s+", " ", c.get("text", "")).strip()
+        if not text:
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        for s in sentences:
+            s = s.strip()
+            if len(s) >= 40 and len(s) <= 180:
+                facts.append((section, s))
+            if len(facts) >= count * 3:
+                break
+        if len(facts) >= count * 3:
+            break
+
+    if not facts:
+        return []
+
+    questions = []
+    for i in range(min(count, len(facts))):
+        section, correct_sentence = facts[i]
+        distractors = []
+        for j in range(len(facts)):
+            if j == i:
+                continue
+            cand = facts[j][1]
+            if cand != correct_sentence and len(distractors) < 3:
+                distractors.append(cand)
+        while len(distractors) < 3:
+            distractors.append("Not stated in the document.")
+
+        options = [correct_sentence] + distractors[:3]
+        # Keep deterministic order but rotate by index for answer variety.
+        rot = i % 4
+        options = options[rot:] + options[:rot]
+        answer_idx = options.index(correct_sentence)
+        answer_letter = chr(ord("A") + answer_idx)
+        labeled = [f"{chr(ord('A') + k)}) {opt}" for k, opt in enumerate(options)]
+
+        questions.append({
+            "q": f"Which statement is correct about {section}?",
+            "options": labeled,
+            "answer": answer_letter,
+            "difficulty": "easy" if i < 2 else "medium",
+            "topic": section or "General",
+        })
+
+    return questions
 

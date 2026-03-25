@@ -12,6 +12,8 @@ from app.parser.router import route_parser
 from app.parser.extractors import extract_document
 from app.parser.normalizer import normalize_content
 from app.chunking.hierarchical import chunk_document
+from app.core.course_structure import save_course_structure
+from app.core.unified_hierarchy import upsert_doc_hierarchy
 from app.indexing.builder import build_indexes, load_indexes
 from app.indexing.vector_index import vector_index_exists
 from app.state import pending_updates
@@ -104,6 +106,8 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
                     raw_content = extract_document(file_path, "pymupdf")
 
             normalized = normalize_content(raw_content, doc_id)
+            save_course_structure(normalized, doc_id=doc_id)
+            upsert_doc_hierarchy(doc_id, normalized, subject="General Studies")
             _update_doc_status(doc_id, stage="structured")
             sec_count = len(normalized.get("sections", []))
             logger.info(f"[{doc_id}] Structured: {sec_count} sections")
@@ -169,17 +173,20 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
         try:
             from app.core.classifier import classify_document
             from app.core.library import add_to_library
+            from app.core.unified_hierarchy import update_subject_title
+            # Get filename from DB for library display only.
+            db2 = SessionLocal()
+            doc2 = db2.query(Document).filter(Document.doc_id == doc_id).first()
+            doc_title = doc2.filename if doc2 and doc2.filename else doc_id
+            db2.close()
+
             subject = await classify_document(doc_id)
-            if subject and subject != "General":
-                # Get filename from DB for the title
-                db2 = SessionLocal()
-                doc2 = db2.query(Document).filter(Document.doc_id == doc_id).first()
-                doc_title = doc2.filename if doc2 and doc2.filename else doc_id
-                db2.close()
-                add_to_library(doc_id, subject, doc_title)
-                logger.info(f"[{doc_id}] Auto-classified → '{subject}'")
-            else:
-                logger.info(f"[{doc_id}] Classification returned '{subject}', skipping auto-tag")
+            final_subject = subject if subject else "General Studies"
+            if final_subject == "General":
+                final_subject = "General Studies"
+            add_to_library(doc_id, final_subject, doc_title)
+            update_subject_title(doc_id, final_subject)
+            logger.info(f"[{doc_id}] Auto-classified → '{final_subject}'")
         except Exception as e:
             logger.warning(f"[{doc_id}] Auto-classification failed (non-fatal): {e}")
 

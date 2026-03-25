@@ -1,8 +1,4 @@
-"""Typo correction for search queries using difflib.
-
-Builds vocabulary from document chunks and suggests corrections
-for misspelled words using fuzzy matching.
-"""
+"""Search spelling + suggestions from indexed PDF content only."""
 import re
 import json
 import logging
@@ -13,8 +9,10 @@ from app.config import CHUNKS_DIR
 
 logger = logging.getLogger(__name__)
 
-# Cache vocabularies per doc
+# Cache vocabularies/suggestions per doc
 _vocab_cache: dict[str, set[str]] = {}
+_term_score_cache: dict[str, dict[str, int]] = {}
+_suggest_cache: dict[tuple[str, str, int], list[str]] = {}
 
 
 def _load_chunks(doc_id: str) -> list[dict]:
@@ -67,6 +65,43 @@ def build_vocabulary(doc_id: str) -> set[str]:
     return vocab
 
 
+def build_search_terms(doc_id: str) -> dict[str, int]:
+    """Build weighted term index from chunk text + headings."""
+    if doc_id in _term_score_cache and _term_score_cache[doc_id]:
+        return _term_score_cache[doc_id]
+
+    chunks = _load_chunks(doc_id)
+    term_scores: dict[str, int] = {}
+    heading_bonus = 3
+
+    for c in chunks:
+        heading = (c.get("section") or "").strip().lower()
+        text = (c.get("text") or "").strip().lower()
+        if heading:
+            term_scores[heading] = term_scores.get(heading, 0) + heading_bonus
+
+        # Candidate phrases (2-3 grams)
+        words = re.findall(r"[a-zA-Z]{3,}", text)
+        for n in (1, 2, 3):
+            for i in range(0, max(0, len(words) - n + 1)):
+                term = " ".join(words[i:i + n]).strip()
+                if len(term) < 3:
+                    continue
+                # ignore noisy phrases
+                if n > 1 and term in {"of the", "in the", "for the"}:
+                    continue
+                term_scores[term] = term_scores.get(term, 0) + 1
+
+    # Repetition boost and pruning
+    pruned = {
+        t: (s + 2 if s >= 3 else s)
+        for t, s in term_scores.items()
+        if s >= 2 and len(t) <= 64
+    }
+    _term_score_cache[doc_id] = pruned
+    return pruned
+
+
 def suggest_query(query: str, doc_id: str) -> dict:
     """Check query for typos and suggest corrections.
 
@@ -94,7 +129,7 @@ def suggest_query(query: str, doc_id: str) -> dict:
             continue
 
         # Find close matches with a slightly relaxed cutoff for better suggestions
-        matches = get_close_matches(word_lower, list(vocab), n=3, cutoff=0.65)
+        matches = get_close_matches(word_lower, list(vocab), n=3, cutoff=0.72)
         if matches and matches[0] != word_lower:
             corrections[word] = matches[0]
             corrected_words.append(matches[0])
@@ -111,3 +146,39 @@ def suggest_query(query: str, doc_id: str) -> dict:
         "did_you_mean": did_you_mean,
         "corrections": corrections,
     }
+
+
+def suggest_autocomplete(prefix: str, doc_id: str, limit: int = 8) -> list[str]:
+    """Return ranked suggestions from PDF terms only."""
+    p = (prefix or "").strip().lower()
+    if len(p) < 2:
+        return []
+    key = (doc_id, p, limit)
+    if key in _suggest_cache:
+        return _suggest_cache[key]
+
+    term_scores = build_search_terms(doc_id)
+    if not term_scores:
+        return []
+
+    terms = list(term_scores.keys())
+    # Prefix-first ranking
+    prefix_hits = [t for t in terms if t.startswith(p)]
+    prefix_hits.sort(key=lambda t: (-term_scores.get(t, 0), len(t)))
+
+    # Fuzzy continuation
+    fuzzy = get_close_matches(p, terms, n=limit * 5, cutoff=0.65)
+    fuzzy.sort(key=lambda t: (-term_scores.get(t, 0), len(t)))
+
+    out: list[str] = []
+    seen = set()
+    for t in prefix_hits + fuzzy:
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        if len(out) >= limit:
+            break
+
+    _suggest_cache[key] = out
+    return out

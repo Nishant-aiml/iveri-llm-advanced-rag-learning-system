@@ -4,19 +4,38 @@
 
 // ── State ────────────────────────────────────────────────────
 const STATE = {
-  userId:   localStorage.getItem('iveri_uid')  || null,
-  username: localStorage.getItem('iveri_name') || null,
-  email:    localStorage.getItem('iveri_email')|| null,
-  docId:    null,
+  userId:      localStorage.getItem('iveri_uid')  || null,
+  username:    localStorage.getItem('iveri_name') || null,
+  email:       localStorage.getItem('iveri_email')|| null,
+  docId:       localStorage.getItem('iveri_docid')|| null,
+  docFilename: localStorage.getItem('iveri_docfn')|| null,
   xp: 0, level: 1, streak: 0,
   currentQuiz: null,
   _flashcards: [], _fcIdx: 0,
 };
 
+// Helper to persist doc selection
+function _saveDocState() {
+  if (STATE.docId) {
+    localStorage.setItem('iveri_docid', STATE.docId);
+    localStorage.setItem('iveri_docfn', STATE.docFilename || '');
+  } else {
+    localStorage.removeItem('iveri_docid');
+    localStorage.removeItem('iveri_docfn');
+  }
+}
+
 // ── Boot ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   if (STATE.userId) {
     updateUserUI();
+    // Restore topbar if doc was previously selected
+    if (STATE.docId) {
+      const fn = el('topbarFilename');
+      const sb = el('topbarStatus');
+      if (fn) fn.textContent = STATE.docFilename || STATE.docId || 'Document';
+      if (sb) sb.textContent = 'READY';
+    }
     smartRoute();
     fetchScore();
   } else {
@@ -43,25 +62,19 @@ function showApp() {
   go('library');
 }
 function doLogout() {
-  ['iveri_uid','iveri_name','iveri_email'].forEach(k => localStorage.removeItem(k));
-  Object.assign(STATE, {userId:null, username:null, email:null, docId:null});
+  ['iveri_uid','iveri_name','iveri_email','iveri_docid','iveri_docfn'].forEach(k => localStorage.removeItem(k));
+  Object.assign(STATE, {userId:null, username:null, email:null, docId:null, docFilename:null});
   showLogin();
 }
-function newDoc() { STATE.docId=null; go('library'); }
+function newDoc() { STATE.docId=null; STATE.docFilename=null; _saveDocState(); go('library'); }
 
-// Smart routing: if user has existing docs, go to Library; else show Upload
+// Smart routing: logged-in users always go to Library (which has inline upload)
 async function smartRoute() {
-  try {
-    if (STATE.userId) {
-      const d = await get(`documents/${encodeURIComponent(STATE.userId)}`);
-      const docs = d.documents || [];
-      if (docs.length > 0) {
-        showApp();  // goes to Library
-        return;
-      }
-    }
-  } catch(e) { /* ignore */ }
-  showUpload();
+  if (STATE.userId) {
+    showApp();  // Library has its own upload zone
+  } else {
+    showLogin();
+  }
 }
 
 // ── REGISTER ──────────────────────────────────────────────────
@@ -242,6 +255,7 @@ async function pollStatus() {
 }
 
 function onDocReady() {
+  _saveDocState();
   fetchScore();
   const sb = el('topbarStatus');
   if (sb) sb.textContent = 'READY';
@@ -273,6 +287,9 @@ function setProgress(pct, label) {
 
 // ── NAVIGATION ────────────────────────────────────────────────
 let _searchMode = 'keyword';
+let _suggestTimer = null;
+let _suggestActiveIndex = -1;
+let _suggestPointerDown = false; // prevents blur handler hiding dropdown during selection
 
 function go(viewId) {
   document.querySelectorAll('.nav-btn').forEach(b => {
@@ -712,6 +729,107 @@ async function doSearch() {
   }
 }
 
+async function fetchSearchSuggestions() {
+  const inputEl = el('searchInput');
+  const q = (inputEl?.value || '').trim();
+  let box = el('searchSuggestBox');
+  if (!box) {
+    const wrap = inputEl?.closest('.search-input-wrap');
+    if (wrap) {
+      box = document.createElement('div');
+      box.id = 'searchSuggestBox';
+      box.className = 'sr-suggest-box';
+      wrap.appendChild(box);
+      // Ensure the dropdown overlays nicely.
+      if (!wrap.style.position) wrap.style.position = 'relative';
+    }
+  }
+  if (!box) return;
+
+  if (!q || q.length < 2 || !STATE.docId) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    _suggestActiveIndex = -1;
+    return;
+  }
+
+  try {
+    const d = await get(`search/suggest/${encodeURIComponent(STATE.docId)}?q=${encodeURIComponent(q)}&limit=5`);
+    const suggestions = d.suggestions || [];
+    if (!suggestions.length) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      _suggestActiveIndex = -1;
+      return;
+    }
+    box.innerHTML = suggestions.map((s, idx) => {
+      const label = _highlightSuggestTerm(s, q);
+      // Explicit onclick so click binding can never "disappear" due to bubbling/timing.
+      return `<button type="button" class="sr-suggest-item" data-suggest="${esc(s)}" data-idx="${idx}" onclick="onSuggestItemClick(event, this)">${label}</button>`;
+    }).join('');
+    box.style.display = 'block';
+    _suggestActiveIndex = -1;
+  } catch (e) {
+    box.style.display = 'none';
+    _suggestActiveIndex = -1;
+  }
+}
+
+function _highlightSuggestTerm(term, query) {
+  const t = esc(term);
+  const q = String(query || '').trim();
+  if (!q) return t;
+  const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
+  return t.replace(regex, '<mark class="sr-suggest-mark">$1</mark>');
+}
+
+function _getVisibleSuggestItems() {
+  const box = el('searchSuggestBox');
+  if (!box || box.style.display === 'none') return [];
+  return Array.from(box.querySelectorAll('.sr-suggest-item'));
+}
+
+function _setSuggestActive(index) {
+  const items = _getVisibleSuggestItems();
+  if (!items.length) {
+    _suggestActiveIndex = -1;
+    return;
+  }
+  if (index < 0) index = items.length - 1;
+  if (index >= items.length) index = 0;
+  _suggestActiveIndex = index;
+  items.forEach((it, i) => it.classList.toggle('active', i === _suggestActiveIndex));
+}
+
+function _applySuggestion(value, triggerSearch = true) {
+  const si = el('searchInput');
+  if (!si) return;
+  si.value = value || '';
+  // Force google-style suggestions to run in hybrid mode.
+  if (_searchMode !== 'hybrid') {
+    _searchMode = 'hybrid';
+    const ml = el('searchModeLabel');
+    if (ml) ml.innerHTML = `Mode: <strong>hybrid</strong>`;
+  }
+  const box = el('searchSuggestBox');
+  if (box) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+  _suggestActiveIndex = -1;
+  _suggestPointerDown = false;
+  if (triggerSearch) doSearch();
+}
+
+function onSuggestItemClick(e, btnEl) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  const val = (btnEl?.dataset?.suggest || '').toString();
+  console.log('Clicked suggestion:', val);
+  _suggestPointerDown = false;
+  _applySuggestion(val, true);
+}
+
 function renderSearchResults(d, query) {
   const mode = d.mode || _searchMode;
   const results = d.results || [];
@@ -763,9 +881,10 @@ function renderSearchResults(d, query) {
       const snippet = _highlightTerms(r.text || '', query);
       const page = r.page || 1;
       const score = r.score || 0;
+      const path = r.hierarchy_path || '';
       html += `<div class="sr-google-card">
         <div class="sr-g-title">${esc(title)}</div>
-        <div class="sr-g-url">📄 ${esc(docName)} · Page ${page} · Score: ${score}</div>
+        <div class="sr-g-url">📄 ${esc(docName)} · Page ${page} · Score: ${score}${path ? ' · ' + esc(path) : ''}</div>
         <div class="sr-g-snippet">${snippet}</div>
       </div>`;
     });
@@ -776,6 +895,87 @@ function renderSearchResults(d, query) {
 
   el('searchResults').innerHTML = html;
 }
+
+// Wire live search suggestions
+document.addEventListener('DOMContentLoaded', function() {
+  const si = el('searchInput');
+  if (!si) return;
+  document.addEventListener('pointerdown', function(e) {
+    const t = e.target;
+    const btn = t?.closest?.('.sr-suggest-item');
+    if (btn) _suggestPointerDown = true;
+  });
+  si.addEventListener('input', function() {
+    if (_suggestTimer) clearTimeout(_suggestTimer);
+    _suggestTimer = setTimeout(fetchSearchSuggestions, 180);
+  });
+  si.addEventListener('blur', function() {
+    setTimeout(() => {
+      const box = el('searchSuggestBox');
+      // Don't hide dropdown if user is clicking inside it.
+      if (box && !_suggestPointerDown) { box.style.display = 'none'; }
+    }, 120);
+  });
+  si.addEventListener('focus', function() {
+    fetchSearchSuggestions();
+  });
+  si.addEventListener('keydown', function(e) {
+    const items = _getVisibleSuggestItems();
+    if (!items.length) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSearch();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _setSuggestActive(_suggestActiveIndex + 1);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _setSuggestActive(_suggestActiveIndex - 1);
+      return;
+    }
+    if (e.key === 'Escape') {
+      const box = el('searchSuggestBox');
+      if (box) box.style.display = 'none';
+      _suggestActiveIndex = -1;
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (_suggestActiveIndex >= 0 && _suggestActiveIndex < items.length) {
+        _suggestPointerDown = false;
+        onSuggestItemClick(e, items[_suggestActiveIndex]);
+      } else {
+        doSearch();
+      }
+    }
+  });
+
+  document.body.addEventListener('click', function(e) {
+    // Fallback for older renders (should be redundant with per-button onclick).
+    // Some browsers/targets may not support closest reliably; fall back to manual traversal.
+    let btn = null;
+    const t = e.target;
+    if (t && typeof t.closest === 'function') {
+      btn = t.closest('.sr-suggest-item');
+    } else if (t && t instanceof Element) {
+      let cur = t;
+      while (cur && cur !== document.body) {
+        if (cur.classList && cur.classList.contains('sr-suggest-item')) { btn = cur; break; }
+        cur = cur.parentElement;
+      }
+    }
+    if (!btn) return;
+    e.stopPropagation();
+    console.log('Clicked suggestion (fallback):', btn.dataset.suggest || '');
+    _suggestPointerDown = false;
+    _applySuggestion(btn.dataset.suggest || '', true);
+  });
+});
 
 function _highlightTerms(text, query) {
   if (!query || !text) return esc(text);
@@ -904,20 +1104,22 @@ async function initLibrary() {
     if (STATE.userId) {
       const ud = await get(`documents/${encodeURIComponent(STATE.userId)}`);
       userDocs = ud.documents || [];
+      console.log('[LIBRARY] Loaded', userDocs.length, 'user documents');
     }
-  } catch(e) { /* ignore if no docs */ }
+  } catch(e) { console.error('[LIBRARY] Failed to load documents:', e); }
 
-  // Also load subject library
-  let subjects = [];
+  // Unified hierarchy for subject -> unit -> topic -> subtopic (collapsed UI)
+  let hierarchy = { subjects: [] };
   try {
-    const lib = await get('library');
-    subjects = Array.isArray(lib) ? lib : (lib.subjects || []);
-  } catch(e) { /* ignore */ }
+    hierarchy = await get(`library/hierarchy/${encodeURIComponent(STATE.userId)}`);
+    console.log('[LIBRARY] Loaded unified hierarchy subjects:', (hierarchy.subjects || []).length);
+  } catch(e) { console.error('[LIBRARY] Failed to load hierarchy:', e); }
 
-  renderLibrary(container, userDocs, subjects);
+  STATE._libraryHierarchy = hierarchy;
+  renderLibrary(container, userDocs, hierarchy);
 }
 
-function renderLibrary(container, userDocs, subjects) {
+function renderLibrary(container, userDocs, hierarchy) {
   let html = '';
 
   // ── Inline Upload Zone (with subject field) ──
@@ -959,11 +1161,12 @@ function renderLibrary(container, userDocs, subjects) {
         </div>
         <div class="lib-doc-actions">
           ${doc.status === 'ready' ? `
-            <button class="btn btn-ghost btn-sm" onclick="openPdfViewer('${esc(doc.doc_id)}')">👁 View</button>
-            <button class="btn btn-primary btn-sm" onclick="activateDoc('${esc(doc.doc_id)}', '${esc(name)}')">▶ Use</button>
-            <button class="btn btn-ghost btn-sm" onclick="promptTagDoc('${esc(doc.doc_id)}', '${esc(name)}')">📁 Tag</button>
+            <button class="btn btn-ghost btn-sm" data-action="view" data-id="${esc(doc.doc_id)}">👁 View</button>
+            <button class="btn btn-primary btn-sm" data-action="use" data-id="${esc(doc.doc_id)}" data-name="${esc(name)}">▶ Use</button>
+            <button class="btn btn-ghost btn-sm" data-action="open-course" data-id="${esc(doc.doc_id)}" data-name="${esc(name)}">🎓 Open as Course</button>
+            <button class="btn btn-ghost btn-sm" data-action="tag" data-id="${esc(doc.doc_id)}" data-name="${esc(name)}">📁 Tag</button>
           ` : `<span style="font-size:12px;color:var(--text-3)">Processing…</span>`}
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteDoc('${esc(doc.doc_id)}')">🗑</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-action="delete" data-id="${esc(doc.doc_id)}">🗑</button>
         </div>
       </div>`;
     });
@@ -974,27 +1177,28 @@ function renderLibrary(container, userDocs, subjects) {
     </div>`;
   }
 
-  // ── Subject Library (always show) ──
+  // ── Subject Library (unified hierarchical view, collapsed) ──
+  const subjects = (hierarchy && hierarchy.subjects) ? hierarchy.subjects : [];
   html += `<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px">
     <h3 style="font-size:15px;font-weight:600;margin:0">📚 Subject Library</h3>
-    <button class="btn btn-ghost btn-sm" onclick="reclassifyAll()" id="reclassifyBtn">🔄 Auto-Classify All</button>
+    <button class="btn btn-ghost btn-sm" data-action="reclassify" id="reclassifyBtn">🔄 Auto-Classify All</button>
   </div>`;
   if (subjects.length) {
-    html += `<div class="library-grid">`;
-    subjects.forEach(s => {
-      const subj = s.subject || s;
-      const count = s.doc_count || 0;
-      html += `<div class="lib-subject-card" onclick="toggleSubjectDocs('${esc(subj)}', this)">
-        <div class="lib-subject-icon">📚</div>
-        <div class="lib-subject-name">${esc(subj)}</div>
-        <div class="lib-subject-count">${count} doc${count !== 1 ? 's' : ''}</div>
-      </div>`;
-    });
-    html += `</div>`;
-    html += `<div id="libDocsPanel" class="lib-docs-panel"></div>`;
+    html += `<div class="library-grid">` +
+      subjects.map(s => {
+        const subj = s.subject || 'General Studies';
+        const docCount = (s.documents || []).length;
+        return `<div class="lib-subject-card" data-action="toggle-subject-hierarchy" data-subject="${esc(subj)}">
+          <div class="lib-subject-icon">📚</div>
+          <div class="lib-subject-name">${esc(subj)}</div>
+          <div class="lib-subject-count">${docCount} doc${docCount !== 1 ? 's' : ''}</div>
+        </div>`;
+      }).join('') +
+    `</div>
+    <div id="libHierarchyPanel" class="lib-docs-panel"></div>`;
   } else {
     html += `<div class="empty-state" style="margin-bottom:16px">
-      <p>No subjects yet. Tag your documents with a subject using the 📁 Tag button above, or enter a subject when uploading.</p>
+      <p>No hierarchy yet. Upload and process a document to generate Subject → Unit → Topic → Subtopic.</p>
     </div>`;
   }
 
@@ -1002,6 +1206,8 @@ function renderLibrary(container, userDocs, subjects) {
 
   // Wire up inline upload events AFTER rendering
   _wireLibraryUpload();
+  // Wire up event delegation for ALL library buttons
+  _wireLibraryActions(container);
 }
 
 function _wireLibraryUpload() {
@@ -1059,6 +1265,7 @@ async function _libUploadFile(file) {
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
     STATE.docId = data.doc_id;
     STATE.docFilename = data.filename || file.name;
+    _saveDocState();
 
     // Auto-tag to subject library if a subject was entered
     if (subject) {
@@ -1117,6 +1324,7 @@ async function _libPollStatus(fb, prog, fill, lbl, subject) {
 
 // Tag an existing doc with a subject (via prompt)
 async function promptTagDoc(docId, docName) {
+  console.log('[TAG] promptTagDoc called:', docId, docName);
   const subject = prompt(`Enter a subject folder for "${docName}":\n(e.g. Physics, Python, Machine Learning)`);
   if (!subject || !subject.trim()) return;
   try {
@@ -1124,16 +1332,224 @@ async function promptTagDoc(docId, docName) {
     alert(`✅ "${docName}" added to "${subject.trim()}"!`);
     initLibrary();
   } catch(e) {
+    console.error('[TAG] Error:', e);
     alert('Failed to tag: ' + e.message);
   }
 }
 
-// Toggle subject folder open/close
-async function toggleSubjectDocs(subject, card) {
+// ── EVENT DELEGATION for all library buttons ─────────────────────
+function _wireLibraryActions(container) {
+  // GUARD: only wire once — prevent duplicate listeners on re-render
+  if (container._libActionsWired) return;
+  container._libActionsWired = true;
+
+  container.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const action  = btn.dataset.action;
+    const docId   = btn.dataset.id;
+    const docName = btn.dataset.name;
+    const subject = btn.dataset.subject;
+    const nodeId  = btn.dataset.node;
+
+    console.log('[LIB-ACTION]', action, docId, docName, subject);
+
+    if (action === 'view') {
+      openPdfViewer(docId);
+      return;
+    }
+
+    if (action === 'use') {
+      activateDoc(docId, docName);
+      return;
+    }
+
+    if (action === 'open-course') {
+      activateDoc(docId, docName);
+      openCourseView(docId, docName);
+      return;
+    }
+
+    if (action === 'open-course-subtopic') {
+      activateDoc(docId, docName);
+      openCourseView(docId, docName, nodeId || '');
+      return;
+    }
+
+    if (action === 'tag') {
+      var subj = window.prompt('Enter a subject folder for "' + (docName||'') + '":\n(e.g. Physics, Python, Machine Learning)');
+      if (!subj || !subj.trim()) return;
+      api('library/add', { doc_id: docId, subject: subj.trim(), title: docName })
+        .then(function() { window.alert('✅ Added to "' + subj.trim() + '"!'); initLibrary(); })
+        .catch(function(err) { console.error('[TAG]', err); window.alert('Failed: ' + err.message); });
+      return;
+    }
+
+    if (action === 'delete') {
+      if (!window.confirm('Delete this document permanently? This cannot be undone.')) return;
+      fetch('/api/doc/' + docId, { method: 'DELETE' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          api('library/remove', { doc_id: docId }).catch(function(){});
+          if (STATE.docId === docId) {
+            STATE.docId = null; STATE.docFilename = null;
+            var fn = el('topbarFilename'); if (fn) fn.textContent = 'No document';
+            var sb = el('topbarStatus'); if (sb) sb.textContent = '';
+          }
+          initLibrary();
+        })
+        .catch(function(err) { console.error('[DELETE]', err); window.alert('Delete failed: ' + err.message); });
+      return;
+    }
+
+    if (action === 'remove-from-subject') {
+      // No confirm needed — just untags from folder, doesn't delete the file
+      btn.disabled = true;
+      btn.textContent = '…';
+      api('library/remove', { doc_id: docId, subject: subject })
+        .then(function() { initLibrary(); })
+        .catch(function(err) { console.error('[REMOVE]', err); window.alert('Failed: ' + err.message); btn.disabled = false; btn.textContent = '✕'; });
+      return;
+    }
+
+    if (action === 'reclassify') {
+      btn.disabled = true; btn.textContent = '🔄 Classifying…';
+      api('library/reclassify', { user_id: STATE.userId })
+        .then(function(res) {
+          var results = res.classified || [];
+          var classified = results.filter(function(r) { return !r.skipped && !r.error; });
+          var skipped = results.filter(function(r) { return r.skipped; });
+          window.alert('✅ Done!\n• ' + classified.length + ' classified\n• ' + skipped.length + ' too generic');
+          initLibrary();
+        })
+        .catch(function(err) { console.error('[CLASSIFY]', err); window.alert('Failed: ' + err.message); })
+        .finally(function() { btn.disabled = false; btn.textContent = '🔄 Auto-Classify All'; });
+      return;
+    }
+
+    if (action === 'toggle-subject') {
+      _handleToggleSubject(subject, btn.closest('.lib-subject-card'));
+      return;
+    }
+
+    if (action === 'toggle-subject-hierarchy') {
+      _renderSubjectHierarchy(subject);
+      return;
+    }
+
+    if (action === 'toggle-unit') {
+      _toggleHierarchyRow('unit', btn.dataset.doc, nodeId);
+      return;
+    }
+    if (action === 'toggle-topic') {
+      _toggleHierarchyRow('topic', btn.dataset.doc, nodeId);
+      return;
+    }
+  });
+}
+
+// ----------------------------
+// Unified hierarchy panel UI
+// ----------------------------
+const _HIER = { expandedUnits: new Set(), expandedTopics: new Set(), activeSubject: '' };
+
+function _renderSubjectHierarchy(subjectName) {
+  const panel = el('libHierarchyPanel');
+  if (!panel) return;
+  const hierarchy = STATE._libraryHierarchy || { subjects: [] };
+  const subject = (hierarchy.subjects || []).find(s => (s.subject || '') === subjectName);
+  _HIER.activeSubject = subjectName || '';
+
+  // highlight selected subject card
+  document.querySelectorAll('.lib-subject-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.lib-subject-card[data-subject="${CSS.escape(subjectName)}"]`);
+  if (card) card.classList.add('selected');
+
+  if (!subject) {
+    panel.style.display = 'block';
+    panel.innerHTML = `<p style="padding:16px;color:var(--text-3)">No data for "${esc(subjectName)}".</p>`;
+    return;
+  }
+
+  panel.style.display = 'block';
+  panel.innerHTML = (subject.documents || []).map(d => _renderDocHierarchy(d)).join('') ||
+    `<p style="padding:16px;color:var(--text-3)">No documents under "${esc(subjectName)}".</p>`;
+}
+
+function _renderDocHierarchy(doc) {
+  const docId = doc.doc_id;
+  const title = doc.title || docId;
+  const nodes = doc.nodes || [];
+  const byParent = {};
+  nodes.forEach(n => {
+    const p = n.parent_node_id || '__root__';
+    (byParent[p] = byParent[p] || []).push(n);
+  });
+  const roots = (byParent['__root__'] || []).filter(n => n.level === 'unit');
+
+  return `<div class="lib-doc-row" style="display:block">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span class="lib-doc-title">📑 ${esc(title)}</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" data-action="open-course" data-id="${esc(docId)}" data-name="${esc(title)}">🎓 Open as Course</button>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      ${roots.map(u => _renderUnit(docId, title, u, byParent)).join('') || `<div style="color:var(--text-3);font-size:13px">No units found.</div>`}
+    </div>
+  </div>`;
+}
+
+function _renderUnit(docId, docTitle, unit, byParent) {
+  const uid = unit.node_id;
+  const expanded = _HIER.expandedUnits.has(docId + '::' + uid);
+  const topics = (byParent[uid] || []).filter(n => n.level === 'topic');
+  return `<div style="margin:8px 0">
+    <button class="btn btn-ghost btn-sm" data-action="toggle-unit" data-doc="${esc(docId)}" data-node="${esc(uid)}">
+      ${expanded ? '▾' : '▸'} 📁 ${esc(unit.title)}
+    </button>
+    ${expanded ? `<div style="padding-left:14px;margin-top:6px">
+      ${topics.map(t => _renderTopic(docId, docTitle, t, byParent)).join('') || `<div style="color:var(--text-3);font-size:12px">No topics.</div>`}
+    </div>` : ``}
+  </div>`;
+}
+
+function _renderTopic(docId, docTitle, topic, byParent) {
+  const tid = topic.node_id;
+  const expanded = _HIER.expandedTopics.has(docId + '::' + tid);
+  const subs = (byParent[tid] || []).filter(n => n.level === 'subtopic');
+  return `<div style="margin:6px 0">
+    <button class="btn btn-ghost btn-sm" data-action="toggle-topic" data-doc="${esc(docId)}" data-node="${esc(tid)}">
+      ${expanded ? '▾' : '▸'} ${esc(topic.title)}
+    </button>
+    ${expanded ? `<div style="padding-left:14px;margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
+      ${subs.map(st => `<button class="btn btn-ghost btn-sm" data-action="open-course-subtopic" data-id="${esc(docId)}" data-name="${esc(docTitle)}" data-node="${esc(st.node_id)}">↳ ${esc(st.title)}</button>`).join('')}
+    </div>` : ``}
+  </div>`;
+}
+
+function _toggleHierarchyRow(kind, docId, nodeId) {
+  const key = docId + '::' + nodeId;
+  if (kind === 'unit') {
+    if (_HIER.expandedUnits.has(key)) _HIER.expandedUnits.delete(key);
+    else _HIER.expandedUnits.add(key);
+  } else {
+    if (_HIER.expandedTopics.has(key)) _HIER.expandedTopics.delete(key);
+    else _HIER.expandedTopics.add(key);
+  }
+  // Re-render active subject only
+  if (_HIER.activeSubject) _renderSubjectHierarchy(_HIER.activeSubject);
+}
+
+// Subject folder expand/collapse
+async function _handleToggleSubject(subject, card) {
+  console.log('[SUBJECT] toggle:', subject);
   const panel = el('libDocsPanel');
   if (!panel) return;
 
-  // If already showing this subject, close it
   if (card.classList.contains('selected')) {
     card.classList.remove('selected');
     panel.innerHTML = '';
@@ -1156,30 +1572,27 @@ async function toggleSubjectDocs(subject, card) {
     panel.innerHTML = `<div class="lib-folder-header">
       <h4>📁 ${esc(subject)} — ${docs.length} document${docs.length !== 1 ? 's' : ''}</h4>
     </div>` +
-      docs.map(d => `<div class="lib-doc-row">
-        <span class="lib-doc-title">📑 ${esc(d.title || d.doc_id)}</span>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-primary btn-sm" onclick="activateDoc('${esc(d.doc_id)}', '${esc(d.title || d.doc_id)}')">▶ Use</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="removeFromSubject('${esc(d.doc_id)}', '${esc(subject)}')">✕</button>
-        </div>
-      </div>`).join('');
+      docs.map(d => {
+        const title = d.title || d.doc_id;
+        return `<div class="lib-doc-row">
+          <span class="lib-doc-title">📑 ${esc(title)}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" data-action="view" data-id="${esc(d.doc_id)}">👁 View</button>
+            <button class="btn btn-primary btn-sm" data-action="use" data-id="${esc(d.doc_id)}" data-name="${esc(title)}">▶ Use</button>
+            <button class="btn btn-ghost btn-sm" data-action="open-course" data-id="${esc(d.doc_id)}" data-name="${esc(title)}">🎓 Open as Course</button>
+            <button class="btn btn-ghost btn-sm" data-action="tag" data-id="${esc(d.doc_id)}" data-name="${esc(title)}">📁 Tag</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-action="remove-from-subject" data-id="${esc(d.doc_id)}" data-subject="${esc(subject)}">✕</button>
+          </div>
+        </div>`;
+      }).join('');
   } catch(e) {
+    console.error('[SUBJECT] Error:', e);
     panel.innerHTML = `<p style="padding:16px;color:var(--danger)">${e.message}</p>`;
   }
 }
 
-// Remove a doc from a subject folder
-async function removeFromSubject(docId, subject) {
-  if (!confirm(`Remove this document from "${subject}"?`)) return;
-  try {
-    await api('library/remove', { doc_id: docId, subject });
-    initLibrary();
-  } catch(e) {
-    alert('Failed to remove: ' + e.message);
-  }
-}
-
 async function reclassifyAll() {
+  console.log('[CLASSIFY] reclassifyAll called, userId:', STATE.userId);
   const btn = el('reclassifyBtn');
   if (btn) { btn.disabled = true; btn.textContent = '🔄 Classifying…'; }
   try {
@@ -1190,6 +1603,7 @@ async function reclassifyAll() {
     alert(`✅ Done!\n• ${classified.length} document(s) classified into subjects\n• ${skipped.length} too generic to classify`);
     initLibrary();  // Refresh to show new subjects
   } catch(e) {
+    console.error('[CLASSIFY] Error:', e);
     alert('Classification failed: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Auto-Classify All'; }
@@ -1218,10 +1632,20 @@ function loadLibraryDoc(docId, title) {
   activateDoc(docId, title);
 }
 
+function openCourseView(docId, title, nodeId='') {
+  const q = new URLSearchParams({
+    doc_id: docId || '',
+    title: title || docId || 'Course',
+  });
+  if (nodeId) q.set('node_id', nodeId);
+  window.open(`/course.html?${q.toString()}`, '_blank', 'noopener');
+}
+
 // Activate a document as the current working document
 function activateDoc(docId, title) {
   STATE.docId = docId;
   STATE.docFilename = title || docId;
+  _saveDocState();
   const fn = el('topbarFilename');
   if (fn) fn.textContent = title || docId;
   const sb = el('topbarStatus');
@@ -1248,6 +1672,7 @@ function requireDoc(containerId) {
 
 // ── PDF VIEWER ─────────────────────────────────────────────────
 function openPdfViewer(docId) {
+  console.log('[VIEW] openPdfViewer called:', docId);
   // Use a programmatic <a> click to bypass popup blockers
   const a = document.createElement('a');
   a.href = `/api/pdf/${docId}`;
@@ -1266,11 +1691,14 @@ function closePdfViewer() {
 }
 
 async function deleteDoc(docId) {
-  if (!confirm(`Delete this document? This cannot be undone.`)) return;
+  console.log('[DELETE] deleteDoc called:', docId);
+  if (!confirm('Delete this document? This cannot be undone.')) return;
   try {
     const res = await fetch(`/api/doc/${docId}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Delete failed');
+    // Also remove from library subjects
+    try { await api('library/remove', { doc_id: docId }); } catch(e) { /* ok if not in library */ }
     if (STATE.docId === docId) {
       STATE.docId = null;
       STATE.docFilename = null;
@@ -1280,7 +1708,10 @@ async function deleteDoc(docId) {
       if (sb) sb.textContent = '';
     }
     initLibrary();
-  } catch(e) { alert('Delete failed: ' + e.message); }
+  } catch(e) {
+    console.error('[DELETE] Error:', e);
+    alert('Delete failed: ' + e.message);
+  }
 }
 
 // ── EVALUATION ─────────────────────────────────────────────────
@@ -1488,4 +1919,3 @@ function fmt(v) {
   if (typeof v === 'number') return v.toFixed ? v.toFixed(3) : v;
   return String(v);
 }
-

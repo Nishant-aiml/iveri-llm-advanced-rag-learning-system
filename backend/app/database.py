@@ -120,6 +120,27 @@ class EvaluationReport(Base):
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class CourseNode(Base):
+    """Unified hierarchical knowledge tree per document."""
+    __tablename__ = "course_nodes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    doc_id = Column(String, nullable=False, index=True)
+    node_id = Column(String, nullable=False)
+    parent_node_id = Column(String, nullable=True, index=True)
+    level = Column(String, nullable=False)  # subject | unit | topic | subtopic
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=True)
+    page = Column(Integer, default=1)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_course_nodes_doc_node", "doc_id", "node_id", unique=True),
+        Index("ix_course_nodes_doc_parent_order", "doc_id", "parent_node_id", "sort_order"),
+    )
+
+
 def init_db():
     """Create all tables."""
     Base.metadata.create_all(bind=engine)

@@ -33,6 +33,29 @@
 📄 Upload a Document  →  🧠 AI Processes & Indexes  →  🎯 Ask, Search, Quiz, Learn
 ```
 
+## ⚡ What this is (in 20 seconds)
+
+**IVERI LLM** is an AI learning platform that turns PDFs into:
+- a **Google-like search engine** (Keyword / Hybrid / AI / Auto)
+- an **NPTEL/Coursera-like Course View** (Subject → Unit → Topic → Subtopic → Content)
+- **grounded Q&A** (answer + sources + confidence, safe fallback)
+- **practice loop** (quizzes, mock tests, flashcards)
+- **personalization** (weakness detection + study recommendations)
+
+## 🧩 Problem → Solution (simple)
+
+### Problem
+- PDFs are hard to study from: no structure, slow navigation, and “chat with PDF” hallucinates.
+- Search is either keyword-only (misses meaning) or vector-only (misses exact terms).
+- Students need feedback loops: practice + weak-topic tracking + targeted revision.
+
+### Solution
+IVERI LLM runs an end-to-end pipeline:
+- **Ingestion**: parse → clean → chunk → index (BM25 + FAISS) → build **unified hierarchy**
+- **Retrieval**: Hybrid RRF fusion + optional rerank + MMR diversity
+- **Trust layer**: confidence + citations; low confidence returns “not in document”
+- **Learning UX**: Course View + Search + Quiz + Flashcards + Weakness dashboard
+
 <table>
 <tr>
 <td width="50%">
@@ -124,22 +147,22 @@ flowchart TD
 <tr>
 <td align="center" width="33%">
 
-### 🤖 RAG Pipeline
+### 🤖 Grounded RAG (Trust-first)
 <img src="https://img.shields.io/badge/12--step-ingestion-blue?style=flat-square" />
 <img src="https://img.shields.io/badge/13--step-query-purple?style=flat-square" />
 
 ---
-End-to-end grounded Q&A with strict prompt constraints. Chain-of-thought cleanup. Zero hallucination by design.
+End-to-end grounded Q&A with strict constraints + citations + confidence. Low confidence → safe fallback.
 
 </td>
 <td align="center" width="33%">
 
-### 🔍 Hybrid Search
+### 🔍 Search Engine (Google-like UX)
 <img src="https://img.shields.io/badge/FAISS-vector-blue?style=flat-square" />
 <img src="https://img.shields.io/badge/BM25-keyword-green?style=flat-square" />
 
 ---
-Parallel vector + keyword search with RRF fusion. Dynamic weight routing per query type. Google-like UI.
+Keyword / Hybrid / AI / Auto routing + autocomplete suggestions from PDF vocabulary + “Did you mean?” typo correction.
 
 </td>
 <td align="center" width="33%">
@@ -181,7 +204,7 @@ Tracks per-topic quiz accuracy. Identifies weak areas. Generates targeted study 
 <img src="https://img.shields.io/badge/subject-folders-green?style=flat-square" />
 
 ---
-LLM auto-classifies uploaded documents into subject folders. Tag, view, delete, organize.
+Unified hierarchy stored in SQLite (Subject → Unit → Topic → Subtopic). Used by both Library and the Course View reader.
 
 </td>
 </tr>
@@ -244,6 +267,27 @@ Built-in evaluation: Recall@k, MRR, accuracy, hallucination rate. Ablation study
 </div>
 
 <br/>
+
+## 🧠 Course View (NPTEL/Coursera-like) — unified hierarchy
+
+When a PDF is uploaded, the backend generates **one persistent hierarchy** and stores it in SQLite.
+Both the **Library** and the **Course View reader page** reuse the same hierarchy.
+
+Example:
+
+```text
+Subject: Operating Systems
+  Unit 1: Processes
+    Topic: CPU Scheduling
+      Subtopic: Round Robin Scheduling
+        Content: page-aware text (used by Summarize/Explain + chat)
+```
+
+Course View UX:
+- **Left sidebar**: collapsible tree (auto-expands to selected node)
+- **Main panel**: content for the selected node
+- **AI actions**: Summarize / Explain scoped to that section
+- **Floating mentor**: chat prioritizes current section, then full document
 
 ## 🔄 How It Works
 
@@ -318,6 +362,21 @@ rrf_score(chunk) = vector_weight × 1/(rrf_k + vector_rank)
 
 <br/>
 
+## 🔍 Search modes (with examples)
+
+- **Keyword (BM25)**: best for exact terms like “process control block”
+- **Hybrid (BM25 + FAISS via RRF)**: best for mixed queries like “why round robin increases context switches”
+- **AI**: hybrid + (optional rerank) + grounded answer (sources + confidence)
+- **Auto**: routes by query length/complexity
+
+Example API call:
+
+```bash
+curl -X POST http://localhost:8000/api/search \
+  -H "Content-Type: application/json" \
+  -d "{\"doc_id\":\"doc_x\",\"query\":\"process control block\",\"mode\":\"hybrid\",\"user_id\":\"default_user\"}"
+```
+
 <div align="center">
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/fire.png" width="100%" />
 </div>
@@ -379,8 +438,8 @@ venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 
 # 4. Configure (.env file)
-echo SARVAM_API_KEY=your_key_here > .env
-echo SARVAM_API_URL=https://api.sarvam.ai/v1/chat/completions >> .env
+cp .env.example .env
+# then edit .env and set SARVAM_API_KEY
 
 # 5. Run
 uvicorn app.main:app --host 0.0.0.0 --port 8000

@@ -7,6 +7,7 @@ import uuid
 import time
 import logging
 import asyncio
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOAD_DIR
+from app.config import FAISS_INDEX_DIR, CHUNKS_DIR
 from app.database import SessionLocal, Document, User, Attempt, get_db
 from app.state import (
     faiss_indexes, chunk_store, generated_cache, llm_cache,
@@ -32,11 +34,27 @@ from app.query.router import route_query
 from app.query.expander import sanitize_query
 from app.llm.trust import compute_confidence, build_source_citations, should_fallback, FALLBACK_RESPONSE
 from app.search.engine import search
+from app.search.spell import suggest_autocomplete
 from app.personalization.tracker import (
     record_quiz_results, get_weak_topics, get_all_topic_scores
 )
 from app.personalization.advisor import generate_advice, generate_study_plan
 from app.core.library import add_to_library, get_subjects, get_subject_docs, remove_from_library
+from app.core.course_structure import (
+    ensure_course_structure,
+    find_node,
+    delete_course_structure,
+    split_structure_and_content,
+)
+from app.core.unified_hierarchy import (
+    get_doc_hierarchy,
+    get_node,
+    delete_doc_hierarchy,
+    get_user_library_hierarchy,
+    update_subject_title,
+    get_doc_breadcrumb_map,
+    upsert_from_structure,
+)
 from app.retrieval.hybrid import compare_retrieval
 from app.evaluation.runner import run_evaluation, retrieval_comparison_report, get_latest_report, run_multi_evaluation
 from app.reranker.llm_reranker import rerank_chunks, validate_reranker
@@ -48,6 +66,7 @@ from app.rag.llm_client import call_llm
 from app.rag.embedder import get_model
 from app.indexing.vector_index import delete_vector_index
 from app.indexing.bm25_index import delete_bm25_index
+from app.indexing.builder import load_indexes
 from app.generators.prompts import get_prompt
 from app.generators.quiz import generate_quiz, evaluate_quiz
 from app.generators.content import generate_content, ask_mentor
@@ -111,6 +130,17 @@ class LibraryRemoveRequest(BaseModel):
     doc_id: str
     subject: str = ""
 
+class CourseActionRequest(BaseModel):
+    doc_id: str
+    node_id: str
+    action: str  # summarize | explain
+
+class CourseChatRequest(BaseModel):
+    doc_id: str
+    question: str
+    node_id: str = ""
+    user_id: str = "default_user"
+
 
 # --- Utility ---
 
@@ -119,6 +149,166 @@ def _log_request(endpoint: str, doc_id: str, query: str = "", cache_hit: bool = 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def _format_course_ai_output(answer: str, action: str, heading: str) -> str:
+    """Normalize summarize/explain outputs into readable structured markdown."""
+    text = (answer or "").strip()
+    if not text:
+        return "No response generated. Please try again."
+
+    def _clean_lines(src: str) -> list[str]:
+        raw_lines = [ln.strip() for ln in src.splitlines() if ln.strip()]
+        return [
+            ln.replace("**", "").replace("__", "").strip()
+            for ln in raw_lines
+            if ln.strip()
+        ]
+
+    lines = _clean_lines(text)
+    if not lines:
+        return text
+
+    if action == "summarize":
+        has_expected_sections = (
+            "## Quick Summary" in text
+            and "## Important Terms" in text
+            and "## Key Takeaways" in text
+        )
+        if has_expected_sections:
+            return text
+
+        bullets = [f"- {ln.lstrip('- ').strip()}" for ln in lines[:8]]
+        return (
+            f"## Quick Summary\n"
+            f"Section: **{heading}**\n\n"
+            + "\n".join(bullets)
+            + "\n\n## Important Terms\n- Add key terms from this section with one-line meanings."
+            + "\n\n## Key Takeaways\n- Focus on the core definition, process, and examples."
+        )
+
+    # explain format
+    has_expected_sections = (
+        "## Concept Overview" in text
+        and "## Step-by-Step Explanation" in text
+        and "## Worked Intuition / Example" in text
+        and "## Common Mistakes" in text
+        and "## Revision Points" in text
+    )
+    if has_expected_sections:
+        return text
+
+    brief = lines[:3]
+    details = lines[3:10] if len(lines) > 3 else []
+    out = [
+        "## Concept Overview",
+        f"Section: **{heading}**",
+        "",
+        *brief,
+        "",
+        "## Step-by-Step Explanation",
+    ]
+    if details:
+        out.extend([f"- {ln.lstrip('- ').strip()}" for ln in details])
+    else:
+        out.append("- Expand each idea with definitions, logic, and examples.")
+    out.extend([
+        "",
+        "## Worked Intuition / Example",
+        "- Connect this concept to one practical or exam-style scenario.",
+        "",
+        "## Common Mistakes",
+        "- Confusing definition with implementation details.",
+        "- Skipping assumptions and constraints in the section.",
+        "- Memorizing terms without understanding flow/logic.",
+        "",
+        "## Revision Points",
+        "- Remember the core definition.",
+        "- Recall the main steps/process.",
+        "- Keep one practical example in mind."
+    ])
+    return "\n".join(out)
+
+
+async def _ensure_auto_classified(doc_id: str, title: str = ""):
+    """Ensure a document is present in at least one subject bucket."""
+    from app.core.classifier import classify_document
+
+    await _ensure_doc_assets_ready(doc_id)
+
+    subjects = get_subjects()
+    for subject_info in subjects:
+        subject_name = subject_info.get("subject", "")
+        docs = get_subject_docs(subject_name)
+        if any(d.get("doc_id") == doc_id for d in docs):
+            return
+
+    subject = await classify_document(doc_id)
+    final_subject = subject if subject else "General Studies"
+    if final_subject == "General":
+        final_subject = "General Studies"
+    add_to_library(doc_id, final_subject, title or doc_id)
+    update_subject_title(doc_id, final_subject)
+    logger.info("[%s] Auto-classified into '%s'", doc_id, final_subject)
+
+
+async def _ensure_doc_assets_ready(doc_id: str):
+    """Self-heal for old docs: load or rebuild indexes/chunks if missing."""
+    if doc_id in faiss_indexes and doc_id in chunk_store:
+        return
+
+    loaded = await load_indexes(doc_id)
+    if loaded and doc_id in chunk_store:
+        return
+
+    # Rebuild from original upload if artifacts are missing/corrupt.
+    source_file = None
+    for ext in ALLOWED_EXTENSIONS:
+        candidate = UPLOAD_DIR / f"{doc_id}{ext}"
+        if candidate.exists():
+            source_file = candidate
+            break
+
+    if not source_file:
+        # Legacy recovery path: clone artifacts from another doc with same file_hash.
+        db = SessionLocal()
+        try:
+            current_doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+            if current_doc and current_doc.file_hash:
+                sibling_docs = db.query(Document).filter(
+                    Document.file_hash == current_doc.file_hash,
+                    Document.doc_id != doc_id,
+                    Document.status == "ready",
+                ).all()
+                for sibling in sibling_docs:
+                    sibling_id = sibling.doc_id
+                    sibling_index = FAISS_INDEX_DIR / f"{sibling_id}.index"
+                    sibling_chunks = CHUNKS_DIR / f"{sibling_id}.json"
+                    sibling_bm25 = CHUNKS_DIR / f"{sibling_id}_bm25.json"
+                    if sibling_index.exists() and sibling_chunks.exists():
+                        shutil.copy2(sibling_index, FAISS_INDEX_DIR / f"{doc_id}.index")
+                        shutil.copy2(sibling_chunks, CHUNKS_DIR / f"{doc_id}.json")
+                        if sibling_bm25.exists():
+                            shutil.copy2(sibling_bm25, CHUNKS_DIR / f"{doc_id}_bm25.json")
+                        logger.warning(
+                            "[%s] Recovered artifacts by cloning from sibling doc %s",
+                            doc_id,
+                            sibling_id,
+                        )
+                        loaded = await load_indexes(doc_id)
+                        if loaded and doc_id in chunk_store:
+                            return
+        finally:
+            db.close()
+
+        raise HTTPException(
+            500,
+            "Document artifacts are missing and could not be recovered automatically. "
+            "Please re-upload this file once to regenerate indexes.",
+        )
+
+    logger.warning("[%s] Missing artifacts detected. Rebuilding indexes...", doc_id)
+    await process_document_pipeline(doc_id, str(source_file))
 
 
 # --- AUTH ENDPOINTS ---
@@ -201,6 +391,7 @@ async def upload_document(
             if not existing_for_user.filename:
                 existing_for_user.filename = original_filename
                 db.commit()
+            await _ensure_auto_classified(existing_for_user.doc_id, existing_for_user.filename or original_filename)
             await add_xp(user_id, "upload")
             return JSONResponse({
                 "doc_id": existing_for_user.doc_id, "status": "ready",
@@ -235,6 +426,31 @@ async def upload_document(
         if source_id in generated_cache:
             generated_cache[doc_id] = generated_cache[source_id]
 
+        # Ensure on-disk artifacts exist for the NEW doc_id as well.
+        # Without this, ready docs can fail retrieval after restart/eviction.
+        source_index = FAISS_INDEX_DIR / f"{source_id}.index"
+        source_chunks = CHUNKS_DIR / f"{source_id}.json"
+        source_bm25 = CHUNKS_DIR / f"{source_id}_bm25.json"
+
+        target_index = FAISS_INDEX_DIR / f"{doc_id}.index"
+        target_chunks = CHUNKS_DIR / f"{doc_id}.json"
+        target_bm25 = CHUNKS_DIR / f"{doc_id}_bm25.json"
+
+        if source_index.exists() and not target_index.exists():
+            shutil.copy2(source_index, target_index)
+        if source_chunks.exists() and not target_chunks.exists():
+            shutil.copy2(source_chunks, target_chunks)
+        if source_bm25.exists() and not target_bm25.exists():
+            shutil.copy2(source_bm25, target_bm25)
+
+        logger.info(
+            "Clone artifacts status | new_doc=%s index=%s chunks=%s bm25=%s",
+            doc_id,
+            target_index.exists(),
+            target_chunks.exists(),
+            target_bm25.exists(),
+        )
+
         db = SessionLocal()
         try:
             doc = Document(
@@ -248,6 +464,7 @@ async def upload_document(
             db.close()
 
         await add_xp(user_id, "upload")
+        await _ensure_auto_classified(doc_id, original_filename)
         return JSONResponse({
             "doc_id": doc_id, "status": "ready",
             "filename": original_filename,
@@ -300,6 +517,7 @@ async def ask_question(req: AskRequest):
     timings = {}
     _log_request("/ask", req.doc_id, req.question)
     _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
 
     clean_q = sanitize_query(req.question)
     if not clean_q:
@@ -355,6 +573,7 @@ async def mentor_chat(req: MentorRequest):
     """AI Mentor mode."""
     start = time.time()
     _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
     result = await ask_mentor(req.doc_id, req.question, req.history)
     await add_xp(req.user_id, "ask")
     return result
@@ -364,6 +583,7 @@ async def mentor_chat(req: MentorRequest):
 async def start_quiz(req: QuizStartRequest):
     """Generate a quiz — adaptive: prioritizes weak topics."""
     _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
     return await generate_quiz(req.doc_id, req.quiz_type, user_id=req.user_id)
 
 
@@ -396,6 +616,7 @@ async def submit_quiz(req: QuizSubmitRequest):
 async def generate(req: GenerateRequest):
     """Generate content: flashcards, summary, slides, fun_facts, etc."""
     _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
 
     valid_types = ["flashcards", "summary", "slides", "fun_facts", "mock_test", "rapid_fire", "true_false", "fill_blanks"]
     if req.content_type not in valid_types:
@@ -412,14 +633,30 @@ async def generate(req: GenerateRequest):
 async def search_endpoint(req: SearchRequest):
     """Search engine with keyword/hybrid/AI modes."""
     _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
 
     clean_q = sanitize_query(req.query)
     if not clean_q:
         raise HTTPException(400, "Invalid or empty query")
 
     result = await search(req.doc_id, clean_q, mode=req.mode, user_id=req.user_id)
+    if isinstance(result, dict) and isinstance(result.get("results"), list):
+        breadcrumb_map = get_doc_breadcrumb_map(req.doc_id)
+        for item in result["results"]:
+            sec = item.get("section", "")
+            if sec and sec in breadcrumb_map:
+                item["hierarchy_path"] = breadcrumb_map[sec]
     await add_xp(req.user_id, "ask")
     return result
+
+
+@router.get("/search/suggest/{doc_id}")
+async def search_suggest(doc_id: str, q: str = Query("", min_length=1), limit: int = Query(8, ge=1, le=20)):
+    """Autocomplete suggestions from indexed PDF vocabulary only."""
+    _validate_doc_ready(doc_id)
+    await _ensure_doc_assets_ready(doc_id)
+    suggestions = suggest_autocomplete(q, doc_id, limit=limit)
+    return {"doc_id": doc_id, "query": q, "suggestions": suggestions}
 
 
 # --- NEW: EVALUATION ---
@@ -552,6 +789,31 @@ async def library_list():
     return {"subjects": get_subjects()}
 
 
+@router.get("/library/hierarchy/{user_id}")
+async def library_hierarchy(user_id: str):
+    """Unified hierarchy for library folder view (subject→unit→topic→subtopic)."""
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).filter(Document.user_id == user_id, Document.status == "ready").all()
+        doc_ids = [d.doc_id for d in docs]
+        # Backfill unified hierarchy for older docs that were processed before this feature.
+        for d in docs:
+            current = get_doc_hierarchy(d.doc_id)
+            needs_backfill = (not current.get("structure")) or (len(current.get("node_content", {})) == 0)
+            if needs_backfill:
+                legacy = ensure_course_structure(d.doc_id)
+                if legacy.get("structure"):
+                    upsert_from_structure(d.doc_id, legacy.get("structure", []), subject="General Studies")
+        data = get_user_library_hierarchy(doc_ids)
+        title_map = {d.doc_id: (d.filename or d.doc_id) for d in docs}
+        for subject in data.get("subjects", []):
+            for doc in subject.get("documents", []):
+                doc["title"] = title_map.get(doc.get("doc_id", ""), doc.get("doc_id", ""))
+        return data
+    finally:
+        db.close()
+
+
 @router.get("/library/{subject}")
 async def library_subject_docs(subject: str):
     """List documents in a subject."""
@@ -583,19 +845,133 @@ async def library_reclassify(req: dict):
         results = []
         for doc in docs:
             try:
+                await _ensure_doc_assets_ready(doc.doc_id)
                 subject = await classify_document(doc.doc_id)
-                if subject and subject not in ("General", "General Studies"):
-                    title = doc.filename or doc.doc_id
-                    add_to_library(doc.doc_id, subject, title)
-                    results.append({"doc_id": doc.doc_id, "subject": subject, "title": title})
-                else:
-                    results.append({"doc_id": doc.doc_id, "subject": subject, "skipped": True})
+                final_subject = subject if subject else "General Studies"
+                if final_subject == "General":
+                    final_subject = "General Studies"
+                title = doc.filename or doc.doc_id
+                add_to_library(doc.doc_id, final_subject, title)
+                update_subject_title(doc.doc_id, final_subject)
+                results.append({"doc_id": doc.doc_id, "subject": final_subject, "title": title})
             except Exception as e:
                 results.append({"doc_id": doc.doc_id, "error": str(e)})
 
         return {"status": "done", "classified": results}
     finally:
         db.close()
+
+
+@router.get("/course/{doc_id}/structure")
+async def get_course_structure(doc_id: str):
+    """Return prebuilt hierarchical structure for course-style reading UI."""
+    _validate_doc_ready(doc_id)
+    await _ensure_doc_assets_ready(doc_id)
+    data = get_doc_hierarchy(doc_id)
+    if (not data.get("structure")) or (len(data.get("node_content", {})) == 0):
+        legacy = ensure_course_structure(doc_id)
+        if legacy.get("structure"):
+            upsert_from_structure(doc_id, legacy.get("structure", []), subject="General Studies")
+            data = get_doc_hierarchy(doc_id)
+            if data.get("structure"):
+                return data
+        return split_structure_and_content(legacy)
+    return data
+
+
+@router.post("/course/action")
+async def course_action(req: CourseActionRequest):
+    """Run section-scoped AI actions: summarize/explain."""
+    _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
+
+    action = (req.action or "").strip().lower()
+    if action not in ("summarize", "explain"):
+        raise HTTPException(400, "action must be 'summarize' or 'explain'")
+
+    node = get_node(req.doc_id, req.node_id)
+    if not node:
+        raise HTTPException(404, "Section not found")
+
+    node_heading = node.get("title", "Section")
+    node_content = (node.get("content") or "").strip()
+    if not node_content:
+        raise HTTPException(400, "This section has no content to process")
+
+    if action == "summarize":
+        prompt = (
+            "You are a teaching assistant. Produce clean markdown with this exact structure:\n"
+            "## Quick Summary\n"
+            "- 4 to 7 bullet points, each one line\n"
+            "## Important Terms\n"
+            "- 3 to 6 key terms with short meaning\n"
+            "## Key Takeaways\n"
+            "- 2 to 4 concise exam-ready takeaways\n\n"
+            "Rules: keep language simple, avoid fluff, avoid repeating the same idea."
+        )
+    else:
+        prompt = (
+            "You are a teaching mentor. Produce clean markdown with this exact structure:\n"
+            "## Concept Overview\n"
+            "- 2 to 4 lines plain-language overview\n"
+            "## Step-by-Step Explanation\n"
+            "- 5 to 9 ordered or bullet steps\n"
+            "## Worked Intuition / Example\n"
+            "- Give one short intuitive example\n"
+            "## Common Mistakes\n"
+            "- 3 to 5 common errors students make\n"
+            "## Revision Points\n"
+            "- 3 to 5 quick revision bullets\n\n"
+            "Rules: simple wording, technically correct, no unrelated theory."
+        )
+
+    result = await call_llm(
+        req.doc_id,
+        f"course_{action}",
+        prompt,
+        f"Section: {node_heading}\n\nContent:\n{node_content}",
+    )
+    raw = result.get("answer", "")
+    answer = _format_course_ai_output(raw, action, node_heading)
+    return {"action": action, "node_id": req.node_id, "answer": answer}
+
+
+@router.post("/course/chat")
+async def course_chat(req: CourseChatRequest):
+    """Context-aware mentor chat: section-first, then full document context."""
+    _validate_doc_ready(req.doc_id)
+    await _ensure_doc_assets_ready(req.doc_id)
+
+    q = sanitize_query(req.question or "")
+    if not q:
+        raise HTTPException(400, "Invalid or empty query")
+
+    node = get_node(req.doc_id, req.node_id) if req.node_id else None
+    section_heading = node.get("title", "") if node else ""
+    section_content = (node.get("content") or "") if node else ""
+
+    retrieved = await retrieve_for_task(req.doc_id, q, task_type="ask")
+    retrieved = mmr_filter(retrieved, max_chunks=4)
+    full_doc_context = "\n\n".join(c.get("text", "") for c in retrieved if c.get("text"))
+
+    prompt = (
+        "You are an AI mentor for a course page.\n"
+        "Priority rules:\n"
+        "1) Prefer answering using current section context if it is relevant.\n"
+        "2) If section context is insufficient, use full document context.\n"
+        "3) If answer is not available, clearly say what is missing.\n"
+        "Be concise and learner-friendly."
+    )
+    context = (
+        f"Current section title: {section_heading or 'None'}\n\n"
+        f"Current section content:\n{section_content[:3500] if section_content else 'Not selected'}\n\n"
+        f"Additional document context:\n{full_doc_context[:3500] if full_doc_context else 'None'}\n\n"
+        f"Question: {q}"
+    )
+
+    result = await call_llm(req.doc_id, "course_chat", prompt, context)
+    await add_xp(req.user_id, "ask")
+    return {"answer": result.get("answer", ""), "node_id": req.node_id, "section": section_heading}
 
 
 # --- EXISTING: LEADERBOARD, SCORE, DELETE, HEALTH ---
@@ -666,6 +1042,10 @@ async def delete_document(doc_id: str):
         file_path = UPLOAD_DIR / f"{doc_id}{ext}"
         if file_path.exists():
             file_path.unlink()
+
+    remove_from_library(doc_id)
+    delete_course_structure(doc_id)
+    delete_doc_hierarchy(doc_id)
 
     db = SessionLocal()
     try:

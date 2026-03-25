@@ -22,12 +22,25 @@ env/
 # Database
 *.db
 *.sqlite3
+*.sqlite
 
 # Uploaded files
 backend/uploads/
 backend/data/faiss_indexes/
 backend/data/chunks/
 backend/data/bm25_indexes/
+
+# Project runtime storage (generated per user/document)
+backend/storage/uploads/
+backend/storage/chunks/
+backend/storage/faiss_index/
+backend/storage/course_structures/
+backend/storage/library/catalog.json
+
+# OS / temp
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
 
 # Logs
 *.log
