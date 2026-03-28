@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260324c" />
+  <link rel="stylesheet" href="styles.css?v=20260328c" />
 </head>
 <body>
 
@@ -112,7 +112,7 @@
     <label class="upload-dropzone" id="uploadDropZone" for="fileInput">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
       <span>Drag &amp; drop or <strong>browse</strong></span>
-      <input type="file" id="fileInput" accept=".pdf,.xlsx" hidden />
+      <input type="file" id="fileInput" accept=".pdf,.xlsx" multiple hidden />
     </label>
 
     <div id="uploadFeedback" class="upload-feedback"></div>
@@ -182,6 +182,14 @@
         Leaderboard
       </button>
     </nav>
+
+    <div class="llm-model-toggle" title="Model used for Ask AI, quizzes, flashcards, summary, and course AI">
+      <span class="llm-model-label">Sarvam</span>
+      <div class="llm-model-seg" role="group" aria-label="LLM size">
+        <button type="button" class="llm-model-btn" data-variant="105b" onclick="setLlmVariant('105b')">105B</button>
+        <button type="button" class="llm-model-btn" data-variant="30b" onclick="setLlmVariant('30b')">30B</button>
+      </div>
+    </div>
 
     <div class="sidebar-footer">
       <div class="sidebar-user">
@@ -297,6 +305,7 @@
         <div class="view-header">
           <h2>Search Engine</h2>
           <p class="view-subtitle">Keyword, Hybrid (BM25+FAISS), or full AI search</p>
+          <a href="/search.html" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open Dedicated Search Page ↗</a>
         </div>
         <div class="search-shell">
           <div class="search-mode-bar">
@@ -316,28 +325,49 @@
 
       <!-- Quiz -->
       <section id="viewQuiz" class="view">
-        <div class="view-header">
-          <h2>Quiz</h2>
-          <p class="view-subtitle">Answer 5 questions on your document</p>
+        <div class="view-header view-header-row">
+          <div>
+            <h2>Quiz</h2>
+            <p class="view-subtitle">Answer 5 questions on your document</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm feature-refresh-btn" data-refresh-feature="quiz" onclick="refreshFeature('quiz')">Refresh 🔄</button>
         </div>
         <div id="quizContent"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
       </section>
 
       <!-- Flashcards -->
       <section id="viewFlashcards" class="view">
-        <div class="view-header"><h2>Flashcards</h2><p class="view-subtitle">Click a card to reveal the answer</p></div>
+        <div class="view-header view-header-row">
+          <div>
+            <h2>Flashcards</h2>
+            <p class="view-subtitle">Click a card to reveal the answer</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm feature-refresh-btn" data-refresh-feature="flashcards" onclick="refreshFeature('flashcards')">Refresh 🔄</button>
+        </div>
         <div id="flashcardsContent"><div class="skeleton-block tall"></div></div>
       </section>
 
       <!-- Mock Test -->
       <section id="viewMocktest" class="view">
-        <div class="view-header"><h2>Mock Test</h2><p class="view-subtitle">Full-length analytical exam</p></div>
+        <div class="view-header view-header-row">
+          <div>
+            <h2>Mock Test</h2>
+            <p class="view-subtitle">Full-length analytical exam</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm feature-refresh-btn" data-refresh-feature="mock_test" onclick="refreshFeature('mock_test')">Refresh 🔄</button>
+        </div>
         <div id="mocktestContent"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
       </section>
 
       <!-- Summary -->
       <section id="viewSummary" class="view">
-        <div class="view-header"><h2>Summary</h2><p class="view-subtitle">Concise overview of the document</p></div>
+        <div class="view-header view-header-row">
+          <div>
+            <h2>Summary</h2>
+            <p class="view-subtitle">Concise overview of the document</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm feature-refresh-btn" data-refresh-feature="summary" onclick="refreshFeature('summary')">Refresh 🔄</button>
+        </div>
         <div id="summaryContent"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block tall"></div></div>
       </section>
 
@@ -396,6 +426,6 @@
   <iframe id="pdfFrame" class="pdf-frame"></iframe>
 </div>
 
-<script src="app.js?v=20260325e"></script>
+<script src="app.js?v=20260328d"></script>
 </body>
 </html>

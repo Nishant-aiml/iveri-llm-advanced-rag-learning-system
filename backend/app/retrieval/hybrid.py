@@ -147,6 +147,20 @@ async def hybrid_retrieve(
     return results
 
 
+def get_chunks_by_ordered_ids(doc_id: str, chunk_ids: list[str]) -> list[dict]:
+    """Restore chunks in the same order as ``chunk_ids`` (fixed context for refresh)."""
+    if not chunk_ids:
+        return []
+    all_chunks = chunk_store.get(doc_id) or []
+    cmap = {c.get("chunk_id"): c for c in all_chunks if c.get("chunk_id")}
+    out: list[dict] = []
+    for cid in chunk_ids:
+        ch = cmap.get(cid)
+        if ch is not None:
+            out.append(ch.copy())
+    return out
+
+
 # =====================================================================
 # COMPARISON MODE — for validation
 # =====================================================================

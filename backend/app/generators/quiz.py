@@ -5,20 +5,171 @@ Includes failure handling for edge cases.
 import json
 import re
 import logging
-from app.retrieval.hybrid import retrieve_for_task
+import random
+import time
+from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE
+from app.retrieval.hybrid import retrieve_for_task, get_chunks_by_ordered_ids
 from app.rag.llm_client import call_llm
-from app.generators.prompts import get_prompt
-from app.generators.cache import get_cached, set_cached
+from app.generators.prompts import get_prompt, build_refresh_instruction
 from app.personalization.tracker import get_weak_topics_for_quiz
+from app.retrieval.mmr import mmr_filter
 
 logger = logging.getLogger(__name__)
 
 
-async def generate_quiz(doc_id: str, quiz_type: str = "quiz", user_id: str = "default_user") -> dict:
+def _dedupe_chunks_by_id(chunks: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    out: list[dict] = []
+    for c in chunks:
+        cid = c.get("chunk_id") or ""
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append(c)
+    return out
+
+
+def _options_distinct(opts: list) -> bool:
+    if not isinstance(opts, list) or len(opts) != 4:
+        return False
+    norm = [str(o).strip().lower() for o in opts]
+    return len(set(norm)) == 4
+
+
+def _mock_difficulty_ok(questions: list[dict]) -> bool:
+    diffs = [str(q.get("difficulty", "")).strip().lower() for q in questions]
+    return diffs.count("easy") == 6 and diffs.count("medium") == 6 and diffs.count("hard") == 3
+
+
+def _fill_mock_metadata(chunks: list[dict], questions: list[dict]) -> list[dict]:
+    default_sec = ""
+    if chunks:
+        default_sec = (chunks[0].get("section") or "").strip()
+    if not default_sec:
+        default_sec = "General"
+    for q in questions:
+        t = (q.get("topic") or "").strip()
+        if not t or t.lower() in {"general", "misc", "n/a"}:
+            q["topic"] = default_sec[:120]
+        else:
+            q["topic"] = t[:120]
+    return questions
+
+
+def _randomize_questions(questions: list[dict]) -> list[dict]:
+    """Shuffle question order + option order while preserving correctness."""
+    if not questions:
+        return questions
+    rng = random.Random(time.time_ns())
+    out = []
+    for q in questions:
+        item = dict(q)
+        opts = list(item.get("options") or [])
+        ca = str(item.get("correct_answer") or "").strip().upper()
+        if len(opts) == 4 and ca in ("A", "B", "C", "D"):
+            correct_idx = ord(ca) - ord("A")
+            correct_opt = opts[correct_idx]
+            pairs = list(enumerate(opts))
+            rng.shuffle(pairs)
+            new_opts = [p[1] for p in pairs]
+            new_correct_idx = next((i for i, o in enumerate(new_opts) if o == correct_opt), 0)
+            item["options"] = new_opts
+            item["correct_answer"] = chr(ord("A") + new_correct_idx)
+        out.append(item)
+    rng.shuffle(out)
+    return out
+
+
+def _is_valid_quiz_question(q: dict, expects_difficulty: bool = False) -> bool:
+    if not isinstance(q, dict):
+        return False
+    if not isinstance(q.get("question"), str) or not q.get("question").strip():
+        return False
+    opts = q.get("options")
+    if not isinstance(opts, list) or len(opts) != 4:
+        return False
+    if not _options_distinct(opts):
+        return False
+    if expects_difficulty:
+        d = str(q.get("difficulty", "")).strip().lower()
+        if d not in ("easy", "medium", "hard"):
+            return False
+        top = q.get("topic")
+        if not isinstance(top, str) or not top.strip():
+            return False
+    ca = q.get("correct_answer")
+    if not isinstance(ca, str) or ca.strip().upper() not in ("A", "B", "C", "D"):
+        return False
+    letter = ca.strip().upper()
+    idx = ord(letter) - ord("A")
+    correct_text = str(opts[idx]).strip()
+    if not correct_text:
+        return False
+    exp = q.get("explanation")
+    if not isinstance(exp, str) or not exp.strip():
+        return False
+    return True
+
+
+def _normalize_quiz_questions(
+    parsed: object, quiz_type: str, chunks: list[dict] | None = None,
+) -> list[dict]:
+    expects_difficulty = quiz_type == "mock_test"
+    # Accept either:
+    # - a list of question objects (strict prompt)
+    # - {"questions": [...]}
+    if isinstance(parsed, list):
+        questions = parsed
+    elif isinstance(parsed, dict) and isinstance(parsed.get("questions"), list):
+        questions = parsed["questions"]
+    else:
+        return []
+
+    # If model returned options as ["A) ...", ...] we still accept;
+    # frontend strips labels by rendering as A/B/C/D.
+    normalized = []
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+        # Support legacy keys in case model returns mixed format.
+        if "question" not in q and "q" in q:
+            q = {**q, "question": q.get("q")}
+        if "correct_answer" not in q and "answer" in q:
+            q = {**q, "correct_answer": q.get("answer")}
+        if "options" not in q and "opts" in q:
+            q = {**q, "options": q.get("opts")}
+        normalized.append(q)
+
+    # Validate strict schema.
+    expected_count = 15 if quiz_type == "mock_test" else 5
+    if len(normalized) != expected_count:
+        return []
+    if expects_difficulty:
+        normalized = _fill_mock_metadata(chunks or [], normalized)
+    if not all(_is_valid_quiz_question(q, expects_difficulty=expects_difficulty) for q in normalized):
+        return []
+
+    if expects_difficulty:
+        if not _mock_difficulty_ok(normalized):
+            return []
+        for q in normalized:
+            q["difficulty"] = str(q.get("difficulty", "")).strip().lower()
+
+    return normalized
+
+
+async def generate_quiz(
+    doc_id: str,
+    quiz_type: str = "quiz",
+    user_id: str = "default_user",
+    llm_variant: str | None = None,
+    refresh: bool = False,
+    previous_output: str | None = None,
+    source_chunk_ids: list[str] | None = None,
+) -> dict:
     """Generate quiz questions — prioritizes weak topics for adaptive learning."""
-    cached = await get_cached(doc_id, quiz_type)
-    if cached:
-        return cached
+    # Intentionally do NOT reuse cached quiz/mock_test payloads:
+    # users expect fresh randomized questions/options each attempt.
 
     # Get weak topics for this user
     weak_topics = get_weak_topics_for_quiz(user_id)
@@ -33,54 +184,132 @@ async def generate_quiz(doc_id: str, quiz_type: str = "quiz", user_id: str = "de
     else:
         query = "Generate quiz questions about the main topics and key definitions"
 
-    # Hybrid retrieval
-    try:
-        chunks = await retrieve_for_task(doc_id, query, task_type=quiz_type)
-    except Exception as e:
-        logger.error(f"Retrieval failed during quiz generation: {e}")
-        return {"questions": [], "error": "Retrieval failed. Please try again."}
+    chunks: list[dict] = []
+    if refresh and source_chunk_ids:
+        chunks = get_chunks_by_ordered_ids(doc_id, source_chunk_ids)
+        chunks = chunks[:AI_RETRIEVAL_MAX_CHUNKS]
+        if chunks:
+            logger.info(
+                "[QUIZ CHUNKS] refresh=fixed doc=%s type=%s ids=%s",
+                doc_id,
+                quiz_type,
+                [c.get("chunk_id", "") for c in chunks],
+            )
 
     if not chunks:
-        return {"questions": [], "error": "No content found in document"}
+        try:
+            chunks = await retrieve_for_task(doc_id, query, task_type=quiz_type)
+        except Exception as e:
+            logger.error(f"Retrieval failed during quiz generation: {e}")
+            return {"questions": [], "error": "Retrieval failed. Please try again."}
+
+        if not chunks:
+            return {"questions": [], "error": "No content found in document"}
+
+        chunks = _dedupe_chunks_by_id(chunks)
+
+        try:
+            chunks = mmr_filter(chunks, max_chunks=AI_RETRIEVAL_MAX_CHUNKS, lambda_param=0.7)
+        except Exception:
+            logger.exception("MMR filter failed during quiz generation; continuing without it.")
+
+        chunks = chunks[:AI_RETRIEVAL_MAX_CHUNKS]
 
     context = "\n\n".join(c["text"] for c in chunks)
-    prompt = get_prompt(quiz_type)
+    if not context.strip():
+        return {"questions": [], "error": "No usable text in document chunks"}
 
-    try:
-        result = await call_llm(doc_id, quiz_type, prompt, context)
-    except Exception as e:
-        logger.error(f"LLM call failed during quiz generation: {e}")
-        return {"questions": [], "error": "AI service temporarily unavailable. Please try again."}
+    # Log what we retrieved (chunk ids + brief preview) to debug context mapping.
+    logger.info(
+        "[QUIZ RETRIEVAL] doc=%s type=%s query='%s' chunk_ids=%s",
+        doc_id,
+        quiz_type,
+        query[:80],
+        [c.get("chunk_id", "") for c in chunks],
+    )
+    logger.info(
+        "[QUIZ CONTEXT] doc=%s preview=%s",
+        doc_id,
+        (context[:1200] + "…") if len(context) > 1200 else context,
+    )
 
-    parsed = _parse_json_response(result["answer"])
-    if parsed:
-        parsed["source_chunks"] = [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks]
-        if weak_topics:
-            parsed["weak_topics_targeted"] = weak_topics
-        await set_cached(doc_id, quiz_type, parsed)
-        return parsed
+    feat = "mock_test" if quiz_type == "mock_test" else "quiz"
+    base_prompt = (
+        get_prompt(quiz_type)
+        + "\n\nGenerate a fresh variant from context and avoid repeated options."
+        + build_refresh_instruction(feat, refresh, previous_output)
+    )
 
-    parsed_from_raw = _parse_mcq_text(result["answer"])
-    if parsed_from_raw:
-        response = {"questions": parsed_from_raw, "source_chunks": [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks]}
-        if weak_topics:
-            response["weak_topics_targeted"] = weak_topics
-        await set_cached(doc_id, quiz_type, response)
-        return response
+    strict_suffixes = [
+        "",
+        "\n\nSTRICT: Output ONLY valid JSON array matching the schema exactly; no markdown fences; no extra keys.",
+        "\n\nFINAL ATTEMPT: JSON array only; 4 distinct options per question; correct_answer must be A/B/C/D only.",
+    ]
 
-    fallback_questions = _build_fallback_quiz(chunks, count=5 if quiz_type != "mock_test" else 8)
+    llm_temp = LLM_REFRESH_TEMPERATURE if refresh else None
+    max_attempts = 4 if refresh else 3
+    last_answer = ""
+    for attempt in range(max_attempts):
+        prompt = base_prompt + strict_suffixes[min(attempt, len(strict_suffixes) - 1)]
+        logger.info("[QUIZ PROMPT] doc=%s attempt=%s len=%s", doc_id, attempt + 1, len(prompt))
+        try:
+            result = await call_llm(
+                doc_id,
+                quiz_type,
+                prompt,
+                context,
+                use_cache=False,
+                llm_variant=llm_variant,
+                temperature=llm_temp,
+            )
+        except Exception as e:
+            logger.error(f"LLM call failed during quiz generation: {e}")
+            return {"questions": [], "error": "AI service temporarily unavailable. Please try again."}
+
+        last_answer = result.get("answer", "") or ""
+        logger.info(
+            "[QUIZ LLM RESPONSE] doc=%s attempt=%s len=%s preview=%s",
+            doc_id,
+            attempt + 1,
+            len(last_answer),
+            (last_answer[:2000] + "…") if len(last_answer) > 2000 else last_answer,
+        )
+
+        parsed_raw = _parse_json_response(last_answer)
+        questions = _normalize_quiz_questions(parsed_raw, quiz_type, chunks=chunks)
+        logger.info("[QUIZ PARSED] doc=%s attempt=%s valid=%s", doc_id, attempt + 1, bool(questions))
+        if questions:
+            response = {"questions": _randomize_questions(questions)}
+            response["source_chunks"] = [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks]
+            if weak_topics:
+                response["weak_topics_targeted"] = weak_topics
+            return response
+
+    fallback_questions = _build_fallback_quiz(
+        chunks,
+        count=15 if quiz_type == "mock_test" else 5,
+        quiz_type=quiz_type,
+    )
     if fallback_questions:
         response = {
-            "questions": fallback_questions,
+            "questions": _randomize_questions(fallback_questions),
             "source_chunks": [{"chunk_id": c["chunk_id"], "section": c.get("section", "")} for c in chunks],
             "fallback_generated": True,
         }
         if weak_topics:
             response["weak_topics_targeted"] = weak_topics
-        await set_cached(doc_id, quiz_type, response)
         return response
 
-    return {"questions": [], "raw": result["answer"], "source_chunks": []}
+    return {"questions": [], "raw": last_answer, "source_chunks": []}
+
+
+def _option_label_text(opts: list, letter: str) -> str:
+    if letter not in ("A", "B", "C", "D"):
+        return ""
+    idx = ord(letter) - ord("A")
+    if not isinstance(opts, list) or not (0 <= idx < len(opts)):
+        return ""
+    return str(opts[idx]).strip()
 
 
 def evaluate_quiz(questions: list, user_answers: list) -> dict:
@@ -90,42 +319,25 @@ def evaluate_quiz(questions: list, user_answers: list) -> dict:
     details = []
 
     for i, (q, ua) in enumerate(zip(questions, user_answers)):
-        correct_answer = q.get("answer", "").strip()
-        user_answer = (ua or "").strip()
+        opts = q.get("options") or []
+        correct_answer = (q.get("correct_answer", "") or "").strip().upper()
+        user_answer = (ua or "").strip().upper()
 
-        # Normalize: strip letter prefixes like "A)", "B.", "C "
-        def normalize(s):
-            s = s.strip()
-            # Remove leading letter+punctuation: "A) ...", "B. ...", "C ..."
-            import re
-            s = re.sub(r'^[A-Da-d][\)\\.\:\s]+\s*', '', s)
-            return s.lower().strip()
-
-        # Match by: exact, normalized text, or letter prefix
-        user_norm = normalize(user_answer)
-        correct_norm = normalize(correct_answer)
-        user_letter = user_answer[0].upper() if user_answer else ''
-        correct_letter = correct_answer[0].upper() if correct_answer else ''
-
-        is_correct = (
-            user_norm == correct_norm  # Full text match
-            or user_answer.upper() == correct_answer.upper()  # Exact match
-            or (len(correct_answer) <= 2 and user_letter == correct_letter)  # Letter-only answer
-        )
-
-        logger.debug(
-            f"Q{i+1}: user='{user_answer}' correct='{correct_answer}' "
-            f"user_norm='{user_norm}' correct_norm='{correct_norm}' → {is_correct}"
-        )
+        is_correct = bool(correct_answer) and (user_answer == correct_answer)
 
         if is_correct:
             correct += 1
         details.append({
-            "question": q.get("q", ""),
+            "question_id": f"q{i}",
+            "question": q.get("question", "") or q.get("q", ""),
             "user_answer": ua,
+            "user_answer_letter": user_answer,
+            "user_answer_text": _option_label_text(opts, user_answer),
             "correct_answer": correct_answer,
+            "correct_answer_text": _option_label_text(opts, correct_answer),
             "is_correct": is_correct,
-            "topic": q.get("topic", "General"),
+            "topic": (q.get("topic") or "").strip() or "General",
+            "explanation": q.get("explanation", ""),
         })
 
     return {
@@ -231,7 +443,7 @@ def _parse_mcq_text(text: str) -> list[dict]:
     return questions
 
 
-def _build_fallback_quiz(chunks: list[dict], count: int = 5) -> list[dict]:
+def _build_fallback_quiz(chunks: list[dict], count: int = 5, quiz_type: str = "quiz") -> list[dict]:
     """Deterministic fallback MCQ builder from retrieved chunks."""
     if not chunks:
         return []
@@ -256,11 +468,21 @@ def _build_fallback_quiz(chunks: list[dict], count: int = 5) -> list[dict]:
         return []
 
     questions = []
-    for i in range(min(count, len(facts))):
-        section, correct_sentence = facts[i]
+
+    # Mock test needs specific difficulty distribution.
+    if quiz_type == "mock_test":
+        difficulty_by_index = []
+        difficulty_by_index += ["easy"] * 6
+        difficulty_by_index += ["medium"] * 6
+        difficulty_by_index += ["hard"] * 3
+    else:
+        difficulty_by_index = []
+    for i in range(count):
+        correct_idx = i % len(facts)
+        section, correct_sentence = facts[correct_idx]
         distractors = []
         for j in range(len(facts)):
-            if j == i:
+            if j == correct_idx:
                 continue
             cand = facts[j][1]
             if cand != correct_sentence and len(distractors) < 3:
@@ -274,15 +496,23 @@ def _build_fallback_quiz(chunks: list[dict], count: int = 5) -> list[dict]:
         options = options[rot:] + options[:rot]
         answer_idx = options.index(correct_sentence)
         answer_letter = chr(ord("A") + answer_idx)
-        labeled = [f"{chr(ord('A') + k)}) {opt}" for k, opt in enumerate(options)]
 
-        questions.append({
-            "q": f"Which statement is correct about {section}?",
-            "options": labeled,
-            "answer": answer_letter,
-            "difficulty": "easy" if i < 2 else "medium",
-            "topic": section or "General",
-        })
+        # Output schema required by strict JSON prompt:
+        # { question, options:[A,B,C,D], correct_answer:"A|B|C|D", explanation }
+        option_texts = [str(opt) for opt in options[:4]]
+        exp = correct_sentence if isinstance(correct_sentence, str) and correct_sentence.strip() else "Not found in the document."
+
+        q_obj = {
+            "question": f"Which statement is correct about {section}?",
+            "options": option_texts,
+            "correct_answer": answer_letter,
+            "explanation": exp,
+            "topic": str(section)[:120],
+        }
+        if quiz_type == "mock_test":
+            q_obj["difficulty"] = difficulty_by_index[i] if i < len(difficulty_by_index) else "medium"
+
+        questions.append(q_obj)
 
     return questions
 

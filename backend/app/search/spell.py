@@ -6,6 +6,7 @@ from pathlib import Path
 from difflib import get_close_matches
 from app.state import chunk_store
 from app.config import CHUNKS_DIR
+from app.database import SessionLocal, Document
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 _vocab_cache: dict[str, set[str]] = {}
 _term_score_cache: dict[str, dict[str, int]] = {}
 _suggest_cache: dict[tuple[str, str, int], list[str]] = {}
+_suggest_user_cache: dict[tuple[str, str, int], list[str]] = {}
 
 
 def _load_chunks(doc_id: str) -> list[dict]:
@@ -181,4 +183,52 @@ def suggest_autocomplete(prefix: str, doc_id: str, limit: int = 8) -> list[str]:
             break
 
     _suggest_cache[key] = out
+    return out
+
+
+def suggest_autocomplete_user(prefix: str, user_id: str, limit: int = 5) -> list[str]:
+    """Return user-scoped suggestions merged across all available docs."""
+    p = (prefix or "").strip().lower()
+    if len(p) < 2:
+        return []
+    key = (user_id, p, limit)
+    if key in _suggest_user_cache:
+        return _suggest_user_cache[key]
+
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).filter(
+            Document.user_id == user_id,
+            Document.status.in_(["ready", "partially_ready"]),
+        ).all()
+    finally:
+        db.close()
+
+    merged_scores: dict[str, int] = {}
+    for d in docs:
+        term_scores = build_search_terms(d.doc_id)
+        for term, score in term_scores.items():
+            merged_scores[term] = merged_scores.get(term, 0) + score
+
+    if not merged_scores:
+        return []
+
+    terms = list(merged_scores.keys())
+    prefix_hits = [t for t in terms if t.startswith(p)]
+    prefix_hits.sort(key=lambda t: (-merged_scores.get(t, 0), len(t)))
+    fuzzy = get_close_matches(p, terms, n=limit * 5, cutoff=0.65)
+    fuzzy.sort(key=lambda t: (-merged_scores.get(t, 0), len(t)))
+
+    out: list[str] = []
+    seen = set()
+    for t in prefix_hits + fuzzy:
+        if t in seen:
+            continue
+        seen.add(t)
+        if len(t) > 64:
+            continue
+        out.append(t)
+        if len(out) >= limit:
+            break
+    _suggest_user_cache[key] = out
     return out

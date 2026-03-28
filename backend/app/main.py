@@ -12,6 +12,7 @@ from app.api.routes import router
 from app.rag.embedder import warmup
 from app.gamification.leaderboard import load_leaderboard_cache
 from app.tasks.background import flush_pending_updates
+from app.tasks.pipeline_queue import start_pipeline_pool, stop_pipeline_pool
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +53,10 @@ async def lifespan(app: FastAPI):
     flush_task = asyncio.create_task(flush_pending_updates())
     logger.info("✓ Background flush task started")
 
+    # 6. Start ingestion queue worker pool
+    await start_pipeline_pool()
+    logger.info("✓ Ingestion worker pool started")
+
     logger.info("=" * 60)
     logger.info("System READY — Advanced RAG pipeline operational")
     logger.info("  Retrieval: Hybrid (FAISS + BM25 + RRF)")
@@ -62,6 +67,7 @@ async def lifespan(app: FastAPI):
 
     # --- SHUTDOWN ---
     flush_task.cancel()
+    await stop_pipeline_pool()
     logger.info("System shutting down")
 
 

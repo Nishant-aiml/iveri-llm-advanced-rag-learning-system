@@ -14,7 +14,13 @@ from app.search.spell import suggest_query
 logger = logging.getLogger(__name__)
 
 
-async def search(doc_id: str, query: str, mode: str = "auto", user_id: str = "default") -> dict:
+async def search(
+    doc_id: str,
+    query: str,
+    mode: str = "auto",
+    user_id: str = "default",
+    llm_variant: str | None = None,
+) -> dict:
     """Search engine with 3 modes.
 
     Modes:
@@ -129,7 +135,9 @@ async def search(doc_id: str, query: str, mode: str = "auto", user_id: str = "de
     context = "\n\n".join(c["text"] for c in chunks)
     from app.generators.prompts import get_prompt
     prompt = get_prompt("ask")
-    result = await call_llm(doc_id, "search_ai", prompt, f"{context}\n\nQuestion: {query}")
+    result = await call_llm(
+        doc_id, "search_ai", prompt, f"{context}\n\nQuestion: {query}", llm_variant=llm_variant
+    )
 
     sources = build_source_citations(chunks)
 

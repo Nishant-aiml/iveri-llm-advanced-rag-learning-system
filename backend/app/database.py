@@ -1,4 +1,5 @@
 """SQLAlchemy database models and engine setup."""
+import logging
 from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Boolean,
@@ -10,6 +11,7 @@ from app.config import DATABASE_URL
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
+logger = logging.getLogger(__name__)
 
 
 def get_db():
@@ -49,6 +51,8 @@ class Document(Base):
     status = Column(String, default="processing")  # processing | ready | failed
     error_message = Column(Text, nullable=True)
     processing_stage = Column(String, default="uploaded")  # uploaded|parsed|structured|embedded|indexed
+    retry_count = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
     processed_time = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -99,6 +103,23 @@ class TopicScore(Base):
     )
 
 
+class QuizAnswerLog(Base):
+    """Per-answer event log for analytics and weakness insights."""
+    __tablename__ = "quiz_answer_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False, index=True)
+    doc_id = Column(String, nullable=False, index=True)
+    question_id = Column(String, nullable=False)
+    topic = Column(String, nullable=True)
+    is_correct = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_quiz_answer_logs_user_created", "user_id", "created_at"),
+    )
+
+
 class EvaluationReport(Base):
     """Persisted evaluation results for proof."""
     __tablename__ = "evaluation_reports"
@@ -144,3 +165,19 @@ class CourseNode(Base):
 def init_db():
     """Create all tables."""
     Base.metadata.create_all(bind=engine)
+
+    # Lightweight SQLite migration for new columns (no Alembic in this repo).
+    # Only adds columns if they don't exist yet.
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            cols = conn.execute(text("PRAGMA table_info(documents)")).fetchall()
+            col_names = {c[1] for c in cols}  # second field is column name
+
+            if "retry_count" not in col_names:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN retry_count INTEGER DEFAULT 0"))
+            if "last_error" not in col_names:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN last_error TEXT"))
+    except Exception:
+        # Non-fatal: columns will be present in fresh DBs; otherwise, endpoints using them may fail.
+        logger.exception("DB migration for retry_count/last_error failed")

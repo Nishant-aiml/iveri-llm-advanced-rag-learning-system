@@ -1,19 +1,56 @@
 """Prompt templates for all LLM tasks — versioned and strict."""
 from app.config import PROMPT_VERSION
 
+
+def build_refresh_instruction(
+    feature: str,
+    refresh: bool,
+    previous_output: str | None = None,
+    max_prev_chars: int = 6000,
+) -> str:
+    """Extra instructions when regenerating so the model avoids repeating prior output."""
+    if not refresh:
+        return ""
+    parts = [
+        "",
+        "Generate a NEW version. Do NOT repeat previous questions or content.",
+        "Avoid reusing the same wording, stems, correct answers, or flashcard fronts.",
+    ]
+    if feature == "quiz":
+        parts.append("Vary angles and facts tested; each MCQ must differ from any prior set you were shown.")
+    elif feature == "mock_test":
+        parts.append("Vary angles and emphasis; do not duplicate prior mock-exam items or correct answers.")
+    elif feature == "flashcards":
+        parts.append("Use different concepts where possible, or rephrase deeply; no near-duplicate cards.")
+    elif feature == "summary":
+        parts.append(
+            "Present the same underlying facts with a different structure, ordering, and emphasis vs any prior summary."
+        )
+    block = "\n".join(parts)
+    prev = (previous_output or "").strip()
+    if prev:
+        if len(prev) > max_prev_chars:
+            prev = prev[:max_prev_chars] + "\n… [truncated]"
+        block += (
+            "\n\nPrevious output to avoid copying "
+            '(paraphrase facts from context only; do not reproduce this text):\n"""'
+            f"{prev}"
+            '"""'
+        )
+    return block
+
 # Base constraint applied to ALL prompts
-BASE_CONSTRAINT = """STRICT RULES:
-- Use ONLY the provided context to answer.
-- If the answer is not found in the context, respond with: "Not in document."
-- Do NOT hallucinate or add external knowledge.
-- Be concise and accurate.
-- Do NOT include any reasoning or thinking process in your response.
-- Do NOT wrap your response in <think> tags or any XML tags.
-- Respond directly with the answer only."""
+#
+# User requested: ALL prompts must start with this instruction.
+BASE_CONSTRAINT = """You MUST answer ONLY using the provided context.
+If answer not found → say "Not found in document".
+Do NOT hallucinate or add external knowledge.
+Do NOT include any reasoning or thinking process.
+Do NOT wrap your response in <think> tags or any XML tags."""
 
-MENTOR_PROMPT = f"""You are an AI teaching mentor (prompt {PROMPT_VERSION}).
+MENTOR_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are an AI teaching mentor (prompt {PROMPT_VERSION}).
 
 Your behavior:
 1. Explain concepts step-by-step in simple language
@@ -25,14 +62,13 @@ Your behavior:
 Context from document:
 {{context}}"""
 
-ASK_PROMPT = f"""You are a document Q&A assistant (prompt {PROMPT_VERSION}).
+ASK_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a document Q&A assistant (prompt {PROMPT_VERSION}).
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - Your answer MUST be directly supported by the provided context below.
 - Quote or paraphrase specific sentences from the context to support your answer.
-- If the context does not contain enough information, say: "Not found in the provided document."
 - NEVER make up facts, definitions, examples, or explanations not present in the context.
 - Cite the section or page when possible.
 - Keep your answer under 200 words.
@@ -40,74 +76,73 @@ CRITICAL ANTI-HALLUCINATION RULES:
 Context from document:
 {{context}}"""
 
-QUIZ_PROMPT = f"""You are a quiz generator (prompt {PROMPT_VERSION}).
+QUIZ_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a quiz generator (prompt {PROMPT_VERSION}).
 
-Generate exactly 5 multiple-choice questions from the provided context.
+You MUST generate exactly 5 multiple-choice questions ONLY from the provided context.
 
-IMPORTANT — Difficulty distribution is MANDATORY:
-- Exactly 2 questions with "difficulty": "easy" (basic recall/definitions)
-- Exactly 2 questions with "difficulty": "medium" (understanding/application)
-- Exactly 1 question with "difficulty": "hard" (analysis/comparison)
+Rules:
+- Each question must be factual and directly supported by the context.
+- Exactly 4 options per question (plain text, no "A)" prefixes inside strings).
+- Exactly ONE correct answer; use letter A, B, C, or D in correct_answer matching the option index.
+- Options must be similar difficulty (no giveaway or obvious wrong answers).
+- Avoid vague wording.
 
-Each question MUST have a different difficulty. Do NOT make all questions the same difficulty.
-
-Output ONLY valid JSON in this exact format:
-{{
-  "questions": [
-    {{
-      "q": "question text",
-      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "answer": "B",
-      "difficulty": "easy",
-      "topic": "short topic label (e.g. Decorators, Memory Management, OOP)"
-    }}
-  ]
-}}
-
-Each question MUST include a "topic" field with a short, specific topic label derived from the context.
+Output ONLY a valid JSON array (NO wrapper object). EXACT schema:
+[
+  {{
+    "question": "",
+    "options": ["", "", "", ""],
+    "correct_answer": "A",
+    "explanation": ""
+  }}
+]
 
 Context:
 {{context}}"""
 
-FLASHCARD_PROMPT = f"""You are a flashcard generator (prompt {PROMPT_VERSION}).
+FLASHCARD_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a flashcard generator (prompt {PROMPT_VERSION}).
 
-Generate 10 flashcards from the context. Each flashcard has a question and a short answer.
+Create exactly 10 flashcards from the context.
 
-Output ONLY valid JSON:
-{{
-  "flashcards": [
-    {{"q": "...", "a": "..."}}
-  ]
-}}
+Rules:
+- Each card = ONE concept only.
+- Front: short question or term (at most 10 words).
+- Back: concise answer (at most 20 words). No long paragraphs.
+- No duplicate concepts.
 
-Context:
-{{context}}"""
-
-SUMMARY_PROMPT = f"""You are a document summarizer (prompt {PROMPT_VERSION}).
-
-{BASE_CONSTRAINT}
-
-Create a summary of the provided context:
-1. Start with the document's main topic and purpose — what is this document about overall?
-2. Write a comprehensive paragraph summary (100-150 words) covering the main themes
-3. List 5-7 bullet points of key takeaways, ordered from most important to least
-
-Output ONLY valid JSON:
-{{
-  "summary": "...",
-  "bullets": ["...", "..."]
-}}
+Output ONLY valid JSON as a JSON array (NO wrapper object):
+[
+  {{"front": "", "back": ""}}
+]
 
 Context:
 {{context}}"""
 
-SLIDES_PROMPT = f"""You are a slide deck generator (prompt {PROMPT_VERSION}).
+SUMMARY_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a document summarizer (prompt {PROMPT_VERSION}).
+
+Summarize using ONLY the context.
+
+Return ONLY valid JSON with EXACTLY this schema:
+{{
+  "bullets": ["...", "..."],
+  "explanation": ""
+}}
+
+- bullets: 5 to 7 key points, most important first.
+- explanation: 3 to 5 short lines (plain text), tied to the bullets.
+
+Context:
+{{context}}"""
+
+SLIDES_PROMPT = f"""{BASE_CONSTRAINT}
+
+You are a slide deck generator (prompt {PROMPT_VERSION}).
 
 Generate 5-7 presentation slides from the context.
 
@@ -124,40 +159,38 @@ Output ONLY valid JSON:
 Context:
 {{context}}"""
 
-MOCK_TEST_PROMPT = f"""You are a comprehensive exam generator (prompt {PROMPT_VERSION}).
+MOCK_TEST_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a comprehensive exam generator (prompt {PROMPT_VERSION}).
 
-Generate exactly 15 multiple-choice questions for a mock exam.
-These must be DIFFERENT from basic quiz questions — focus on:
-- Application-based questions ("In which scenario would you use...?")
-- Comparison questions ("What is the difference between X and Y?")
-- Analytical questions ("Why does X lead to Y?")
-- Edge cases and nuances from the document
+Generate exactly 15 multiple-choice questions for a mock exam ONLY from the provided context.
 
 MANDATORY difficulty distribution:
-- Exactly 6 questions with "difficulty": "easy"
-- Exactly 6 questions with "difficulty": "medium"
-- Exactly 3 questions with "difficulty": "hard"
+- Exactly 6 with "difficulty": "easy"
+- Exactly 6 with "difficulty": "medium"
+- Exactly 3 with "difficulty": "hard"
 
-Output ONLY valid JSON:
-{{
-  "questions": [
-    {{
-      "q": "...",
-      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "answer": "C",
-      "difficulty": "easy"
-    }}
-  ]
-}}
+Each question must be factual, with 4 plain-text options and one correct letter A–D.
+For "topic", use a short section or theme name that matches the content (e.g. a heading or concept from context).
+
+Output ONLY a valid JSON array (NO wrapper object). EXACT schema:
+[
+  {{
+    "question": "",
+    "options": ["", "", "", ""],
+    "correct_answer": "A",
+    "difficulty": "easy",
+    "topic": "",
+    "explanation": ""
+  }}
+]
 
 Context:
 {{context}}"""
 
-FUN_FACTS_PROMPT = f"""You are a fun facts extractor (prompt {PROMPT_VERSION}).
+FUN_FACTS_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a fun facts extractor (prompt {PROMPT_VERSION}).
 
 Extract 5 interesting, surprising, or non-obvious facts from the context.
 
@@ -169,9 +202,9 @@ Output ONLY valid JSON:
 Context:
 {{context}}"""
 
-RAPID_FIRE_PROMPT = f"""You are a rapid-fire question generator (prompt {PROMPT_VERSION}).
+RAPID_FIRE_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a rapid-fire question generator (prompt {PROMPT_VERSION}).
 
 Generate 10 quick one-line questions with short answers (1-3 words each).
 
@@ -185,9 +218,9 @@ Output ONLY valid JSON:
 Context:
 {{context}}"""
 
-TRUE_FALSE_PROMPT = f"""You are a true/false question generator (prompt {PROMPT_VERSION}).
+TRUE_FALSE_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a true/false question generator (prompt {PROMPT_VERSION}).
 
 Generate 10 true/false statements based on the context.
 
@@ -201,9 +234,9 @@ Output ONLY valid JSON:
 Context:
 {{context}}"""
 
-FILL_BLANKS_PROMPT = f"""You are a fill-in-the-blank generator (prompt {PROMPT_VERSION}).
+FILL_BLANKS_PROMPT = f"""{BASE_CONSTRAINT}
 
-{BASE_CONSTRAINT}
+You are a fill-in-the-blank generator (prompt {PROMPT_VERSION}).
 
 Generate 10 fill-in-the-blank sentences from the context. Use ___ for the blank.
 

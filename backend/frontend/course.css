@@ -61,6 +61,52 @@ body {
   padding: 18px;
   line-height: 1.7;
 }
+.course-content {
+  max-width: 900px;
+}
+.course-content p,
+.ai-output p {
+  margin: 0 0 12px;
+}
+.course-content ul,
+.course-content ol,
+.ai-output ul,
+.ai-output ol {
+  margin: 6px 0 14px 20px;
+  padding-left: 14px;
+}
+.course-content li,
+.ai-output li {
+  margin-bottom: 6px;
+}
+.course-content h1,
+.course-content h2,
+.course-content h3,
+.ai-output h1,
+.ai-output h2,
+.ai-output h3 {
+  line-height: 1.35;
+  margin: 14px 0 10px;
+}
+.course-content pre,
+.ai-output pre {
+  margin: 10px 0 14px;
+  padding: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+}
+.course-content code,
+.ai-output code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+.sr-chunk-text p:last-child,
+.sr-chunk-text ul:last-child,
+.sr-chunk-text ol:last-child {
+  margin-bottom: 0;
+}
 .ai-output { margin-top: 12px; }
 
 .btn {

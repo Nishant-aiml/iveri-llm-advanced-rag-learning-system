@@ -7,6 +7,7 @@ import uuid
 import time
 import logging
 import asyncio
+import json
 import shutil
 from pathlib import Path
 from datetime import datetime, timezone
@@ -16,14 +17,15 @@ from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOAD_DIR
+from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOAD_DIR, MAX_INGEST_QUEUE_SIZE
 from app.config import FAISS_INDEX_DIR, CHUNKS_DIR
-from app.database import SessionLocal, Document, User, Attempt, get_db
+from app.database import SessionLocal, Document, User, Attempt, get_db, CourseNode
 from app.state import (
     faiss_indexes, chunk_store, generated_cache, llm_cache,
     doc_locks, leaderboard_cache, bm25_indexes
 )
 from app.tasks.background import process_document_pipeline
+from app.tasks.pipeline_queue import enqueue_pipeline_job, queue_stats, get_doc_queue_info
 
 # New pipeline imports
 from app.retrieval.hybrid import retrieve_for_task
@@ -34,9 +36,9 @@ from app.query.router import route_query
 from app.query.expander import sanitize_query
 from app.llm.trust import compute_confidence, build_source_citations, should_fallback, FALLBACK_RESPONSE
 from app.search.engine import search
-from app.search.spell import suggest_autocomplete
+from app.search.spell import suggest_autocomplete, suggest_autocomplete_user
 from app.personalization.tracker import (
-    record_quiz_results, get_weak_topics, get_all_topic_scores
+    record_quiz_results, record_quiz_answer_logs, get_weak_topics, get_all_topic_scores
 )
 from app.personalization.advisor import generate_advice, generate_study_plan
 from app.core.library import add_to_library, get_subjects, get_subject_docs, remove_from_library
@@ -85,29 +87,40 @@ class AskRequest(BaseModel):
     question: str
     user_id: str = "default_user"
     stream: bool = False
+    llm_variant: Optional[str] = "105b"  # "105b" | "30b"
 
 class QuizStartRequest(BaseModel):
     doc_id: str
     user_id: str = "default_user"
     quiz_type: str = "quiz"
+    llm_variant: Optional[str] = "105b"
+    refresh: bool = False
+    previous_output: Optional[str] = None
+    source_chunk_ids: Optional[list] = None
 
 class QuizSubmitRequest(BaseModel):
     doc_id: str
     user_id: str = "default_user"
     questions: list
     answers: list[str]
+    quiz_type: str = "quiz"
 
 class GenerateRequest(BaseModel):
     doc_id: str
     content_type: str
     user_id: str = "default_user"
     query: str = ""
+    llm_variant: Optional[str] = "105b"
+    refresh: bool = False
+    previous_output: Optional[str] = None
+    source_chunk_ids: Optional[list] = None
 
 class MentorRequest(BaseModel):
     doc_id: str
     question: str
     user_id: str = "default_user"
     history: list = Field(default_factory=list)
+    llm_variant: Optional[str] = "105b"
 
 class AuthRequest(BaseModel):
     username: str
@@ -120,6 +133,14 @@ class SearchRequest(BaseModel):
     query: str
     mode: str = "auto"  # keyword | hybrid | ai | auto
     user_id: str = "default_user"
+    llm_variant: Optional[str] = "105b"
+
+
+class UserSearchRequest(BaseModel):
+    user_id: str
+    query: str
+    mode: str = "hybrid"
+    limit: int = 20
 
 class LibraryAddRequest(BaseModel):
     doc_id: str
@@ -134,12 +155,14 @@ class CourseActionRequest(BaseModel):
     doc_id: str
     node_id: str
     action: str  # summarize | explain
+    llm_variant: Optional[str] = "105b"
 
 class CourseChatRequest(BaseModel):
     doc_id: str
     question: str
     node_id: str = ""
     user_id: str = "default_user"
+    llm_variant: Optional[str] = "105b"
 
 
 # --- Utility ---
@@ -149,6 +172,145 @@ def _log_request(endpoint: str, doc_id: str, query: str = "", cache_hit: bool = 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+_STAGE_PROGRESS = {
+    "uploaded": 20,
+    "parsed": 20,
+    "structured": 40,
+    "embedded": 70,
+    "indexed": 100,
+}
+
+
+def _doc_progress(doc: Document) -> int:
+    # No fake progress: interpret `processing_stage` differently based on `status`.
+    if doc.status == "failed":
+        return 0
+    if doc.status == "ready":
+        return 100
+    if doc.status == "partially_ready":
+        # Embeddings/vector are ready, BM25/indexing may still be in-flight.
+        return 70
+    # doc.status == "processing"
+    if doc.processing_stage == "embedded":
+        # Stage `embedded` is reached after chunking; embedding completes later in indexed stage.
+        return 40
+    if doc.processing_stage == "indexed":
+        return 70
+    return _STAGE_PROGRESS.get(doc.processing_stage or "uploaded", 0)
+
+
+_SUBTOPIC_BY_TITLE_CACHE: dict[str, dict[str, list[dict]]] = {}
+_SUBTOPIC_BY_TITLE_CACHE_LOCK: asyncio.Lock = asyncio.Lock()
+
+
+async def _get_subtopic_by_title(doc_id: str) -> dict[str, list[dict]]:
+    """Build {subtopic_title: [node...]} lookup for a doc (cached)."""
+    if doc_id in _SUBTOPIC_BY_TITLE_CACHE:
+        return _SUBTOPIC_BY_TITLE_CACHE[doc_id]
+
+    # Build outside lock quickly if multiple requests race; worst case repeats.
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(CourseNode)
+            .filter(CourseNode.doc_id == doc_id, CourseNode.level == "subtopic")
+            .order_by(CourseNode.sort_order.asc())
+            .all()
+        )
+    finally:
+        db.close()
+
+    by_title: dict[str, list[dict]] = {}
+    for r in rows:
+        t = (r.title or "").strip()
+        by_title.setdefault(t, []).append(
+            {"node_id": r.node_id, "title": t, "page": int(r.page or 1)}
+        )
+
+    # Cache with a lock to avoid partial writes.
+    async with _SUBTOPIC_BY_TITLE_CACHE_LOCK:
+        _SUBTOPIC_BY_TITLE_CACHE[doc_id] = by_title
+    return by_title
+
+
+def _expected_subtopic_title(section_title: str, by_title: dict[str, list[dict]]) -> str:
+    """Map chunk.section heading → the unified-hierarchy subtopic title."""
+    def _norm_title(s: str) -> str:
+        return " ".join((s or "").strip().lower().split())
+
+    def _match_title(raw: str) -> str:
+        if not raw:
+            return ""
+        if raw in by_title:
+            return raw
+        nr = _norm_title(raw)
+        for k in by_title.keys():
+            if _norm_title(k) == nr:
+                return k
+        return ""
+
+    sec = (section_title or "").strip()
+    if not sec:
+        return ""
+
+    details_raw = f"{sec} Details"
+
+    sec_match = _match_title(sec)
+    details_match = _match_title(details_raw)
+
+    # Prefer the "Details" subtopic when it's present and plain title isn't.
+    if details_match and not sec_match:
+        return details_match
+    if sec_match:
+        return sec_match
+    if details_match:
+        return details_match
+    # Fallback for missing titles: assume Details convention (raw).
+    return details_raw
+
+
+def _pick_node_id(candidates: list[dict], page: int) -> str:
+    if not candidates:
+        return ""
+    for c in candidates:
+        if int(c.get("page", 1)) == int(page):
+            return c["node_id"]
+    # Deterministic fallback: lowest sort_order was used to preserve ordering in candidates.
+    return candidates[0]["node_id"]
+
+
+def _normalize_search_item(
+    item: dict,
+    doc_id: str,
+    filename: str,
+    breadcrumb_map: dict[str, str],
+    subtopic_by_title: dict[str, list[dict]],
+) -> dict:
+    section = (item.get("section", "") or "").strip()
+    page = int(item.get("page", 1) or 1)
+
+    expected_title = _expected_subtopic_title(section, subtopic_by_title)
+    node_id = _pick_node_id(subtopic_by_title.get(expected_title, []), page) if expected_title else ""
+
+    hierarchy_path = breadcrumb_map.get(expected_title, breadcrumb_map.get(section, item.get("hierarchy_path", section)))
+
+    return {
+        "doc_id": doc_id,
+        "node_id": node_id,
+        "chunk_id": item.get("chunk_id", ""),
+        "page": page,
+        "section_path": hierarchy_path,
+        "snippet": item.get("text", "") or item.get("snippet", ""),
+        "title": expected_title or section or filename or doc_id,
+        "score": item.get("score", 0),
+        # backward-compatible keys for existing UI
+        "text": item.get("text", "") or item.get("snippet", ""),
+        "section": section,
+        "hierarchy_path": hierarchy_path,
+        "filename": filename or doc_id,
+    }
 
 
 def _format_course_ai_output(answer: str, action: str, heading: str) -> str:
@@ -254,11 +416,37 @@ async def _ensure_auto_classified(doc_id: str, title: str = ""):
 
 async def _ensure_doc_assets_ready(doc_id: str):
     """Self-heal for old docs: load or rebuild indexes/chunks if missing."""
+    async def _course_nodes_exist() -> bool:
+        db = SessionLocal()
+        try:
+            return db.query(CourseNode).filter(CourseNode.doc_id == doc_id).first() is not None
+        finally:
+            db.close()
+
+    async def _backfill_course_nodes_from_chunks():
+        # Safe recovery for older docs processed before unified hierarchy existed.
+        # We derive a lightweight course structure from existing chunk sections,
+        # then upsert the unified hierarchy nodes using unified_hierarchy's algorithm.
+        from app.core.course_structure import ensure_course_structure
+        from app.core.unified_hierarchy import upsert_from_structure
+
+        legacy = ensure_course_structure(doc_id)
+        if not legacy:
+            return
+        structure = legacy.get("structure", [])
+        if not structure:
+            return
+        upsert_from_structure(doc_id, structure, subject="General Studies")
+
     if doc_id in faiss_indexes and doc_id in chunk_store:
+        if not await _course_nodes_exist():
+            await _backfill_course_nodes_from_chunks()
         return
 
     loaded = await load_indexes(doc_id)
     if loaded and doc_id in chunk_store:
+        if not await _course_nodes_exist():
+            await _backfill_course_nodes_from_chunks()
         return
 
     # Rebuild from original upload if artifacts are missing/corrupt.
@@ -483,7 +671,21 @@ async def upload_document(
     finally:
         db.close()
 
-    background_tasks.add_task(process_document_pipeline, doc_id, str(file_path))
+    try:
+        await enqueue_pipeline_job(doc_id, str(file_path), file_size_mb=size_mb)
+    except asyncio.QueueFull:
+        # Reject upload when backpressure limit is hit.
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+            if doc:
+                doc.status = "failed"
+                doc.error_message = f"Ingestion queue is full (max={MAX_INGEST_QUEUE_SIZE}). Please try again later."
+                doc.last_error = doc.error_message
+            db.commit()
+        finally:
+            db.close()
+        raise HTTPException(429, "Ingestion queue is full. Please try again later.")
     await add_xp(user_id, "upload")
 
     latency = round(time.time() - start, 3)
@@ -491,8 +693,101 @@ async def upload_document(
     return JSONResponse({
         "doc_id": doc_id, "status": "processing",
         "filename": original_filename,
-        "message": "Document upload accepted, processing in background"
+        "message": "Document upload accepted, queued for processing"
     })
+
+
+@router.post("/upload/multi")
+async def upload_documents_multi(
+    files: list[UploadFile] = File(default_factory=list),
+    files_array: list[UploadFile] = File(default_factory=list, alias="files[]"),
+    user_id: str = Form("default_user"),
+):
+    """Queue many PDFs/Excels with per-file status and real pipeline stages."""
+    incoming_files = files if files else files_array
+    if not incoming_files:
+        raise HTTPException(400, "No files uploaded")
+
+    accepted = []
+    rejected = []
+    db = SessionLocal()
+    try:
+        for file in incoming_files:
+            ext = Path(file.filename or "").suffix.lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                rejected.append({"filename": file.filename, "error": f"Invalid type: {ext}"})
+                continue
+
+            contents = await file.read()
+            size_mb = len(contents) / (1024 * 1024)
+            if size_mb > MAX_UPLOAD_SIZE_MB:
+                rejected.append({"filename": file.filename, "error": f"File too large (> {MAX_UPLOAD_SIZE_MB}MB)"})
+                continue
+
+            original_filename = file.filename or "document"
+            file_hash = hashlib.md5(contents).hexdigest()
+            existing = db.query(Document).filter(
+                Document.file_hash == file_hash,
+                Document.user_id == user_id,
+            ).first()
+            if existing and existing.status in ("ready", "partially_ready", "processing"):
+                accepted.append({
+                    "doc_id": existing.doc_id,
+                    "filename": existing.filename or original_filename,
+                    "status": existing.status,
+                    "processing_stage": existing.processing_stage,
+                    "duplicate": True,
+                })
+                continue
+
+            doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+            file_path = UPLOAD_DIR / f"{doc_id}{ext}"
+            with open(file_path, "wb") as f:
+                f.write(contents)
+
+            doc = Document(
+                doc_id=doc_id,
+                user_id=user_id,
+                filename=original_filename,
+                file_hash=file_hash,
+                status="processing",
+                processing_stage="uploaded",
+            )
+            db.add(doc)
+            doc_entry = {
+                "doc_id": doc_id,
+                "filename": original_filename,
+                "status": "queued",
+                "processing_stage": "uploaded",
+                "duplicate": False,
+            }
+            try:
+                await enqueue_pipeline_job(doc_id, str(file_path), file_size_mb=size_mb)
+                accepted.append(doc_entry)
+            except asyncio.QueueFull:
+                err = f"Ingestion queue is full (max={MAX_INGEST_QUEUE_SIZE}). Please try again later."
+                doc.status = "failed"
+                doc.error_message = err
+                doc.last_error = err
+                rejected.append({"filename": original_filename, "doc_id": doc_id, "error": err})
+                continue
+        db.commit()
+    finally:
+        db.close()
+
+    if accepted:
+        await add_xp(user_id, "upload")
+    return {
+        "user_id": user_id,
+        # New response keys (frontend expects these)
+        "accepted_files": accepted,
+        "rejected_files": rejected,
+        "queue_status": queue_stats(),
+        # Back-compat (older callers/tests may rely on these)
+        "accepted": accepted,
+        "rejected": rejected,
+        "queue": queue_stats(),
+    }
 
 
 @router.get("/status/{doc_id}")
@@ -503,9 +798,105 @@ async def get_document_status(doc_id: str):
         doc = db.query(Document).filter(Document.doc_id == doc_id).first()
         if not doc:
             raise HTTPException(404, "Document not found")
-        return {"doc_id": doc.doc_id, "status": doc.status, "processing_stage": doc.processing_stage, "error": doc.error_message}
+        queue_info = await get_doc_queue_info(doc_id)
+        return {
+            "doc_id": doc.doc_id,
+            "status": doc.status,
+            "processing_stage": doc.processing_stage,
+            "progress": _doc_progress(doc),
+            "error": doc.error_message,
+            "retry_count": doc.retry_count,
+            "last_error": doc.last_error,
+            "queue_position": queue_info.get("doc_position_in_queue") if queue_info else None,
+            "estimated_wait": queue_info.get("estimated_wait") if queue_info else None,
+        }
     finally:
         db.close()
+
+
+@router.get("/status/user/{user_id}")
+async def get_user_processing_status(user_id: str):
+    """Per-user processing overview with real stage/progress."""
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).filter(Document.user_id == user_id).order_by(Document.created_at.desc()).all()
+        items = []
+        for d in docs:
+            queue_info = await get_doc_queue_info(d.doc_id)
+            items.append({
+                "doc_id": d.doc_id,
+                "filename": d.filename or d.doc_id,
+                "status": d.status,
+                "processing_stage": d.processing_stage,
+                "progress": _doc_progress(d),
+                "error": d.error_message,
+                "retry_count": d.retry_count,
+                "last_error": d.last_error,
+                "queue_position": queue_info.get("doc_position_in_queue") if queue_info else None,
+                "estimated_wait": queue_info.get("estimated_wait") if queue_info else None,
+            })
+        summary = {
+            "processing": sum(1 for d in docs if d.status == "processing"),
+            "queued": sum(1 for d in docs if d.status == "processing" and (d.processing_stage or "uploaded") == "uploaded"),
+            "completed": sum(1 for d in docs if d.status == "ready"),
+            "partially_ready": sum(1 for d in docs if d.status == "partially_ready"),
+            "failed": sum(1 for d in docs if d.status == "failed"),
+        }
+        return {"user_id": user_id, "summary": summary, "queue": queue_stats(), "documents": items}
+    finally:
+        db.close()
+
+
+@router.post("/retry/{doc_id}")
+async def retry_document(doc_id: str):
+    """Retry a failed ingestion job by re-queuing it."""
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+        if not doc:
+            raise HTTPException(404, "Document not found")
+        if doc.status != "failed":
+            raise HTTPException(400, "Document is not in failed state")
+
+        next_retry = (doc.retry_count or 0) + 1
+        doc.status = "processing"
+        doc.processing_stage = "uploaded"
+        doc.error_message = None
+        doc.last_error = None
+        doc.retry_count = next_retry
+        db.commit()
+    finally:
+        db.close()
+
+    source_file = None
+    for ext in ALLOWED_EXTENSIONS:
+        candidate = UPLOAD_DIR / f"{doc_id}{ext}"
+        if candidate.exists():
+            source_file = candidate
+            break
+
+    if not source_file:
+        raise HTTPException(404, "Source file not found in uploads folder")
+
+    file_size_mb = source_file.stat().st_size / (1024 * 1024)
+    try:
+        await enqueue_pipeline_job(doc_id, str(source_file), file_size_mb=file_size_mb)
+    except asyncio.QueueFull:
+        # Keep it failed if we cannot enqueue.
+        db = SessionLocal()
+        try:
+            doc = db.query(Document).filter(Document.doc_id == doc_id).first()
+            if doc:
+                err = f"Ingestion queue is full (max={MAX_INGEST_QUEUE_SIZE})."
+                doc.status = "failed"
+                doc.error_message = err
+                doc.last_error = err
+                db.commit()
+        finally:
+            db.close()
+        raise HTTPException(429, "Ingestion queue is full. Please try again later.")
+
+    return {"status": "requeued", "doc_id": doc_id, "retry_count": next_retry}
 
 
 # --- AI ENDPOINTS (UPGRADED with hybrid retrieval) ---
@@ -553,7 +944,9 @@ async def ask_question(req: AskRequest):
     prompt = get_prompt("ask")
 
     t0 = time.time()
-    result = await call_llm(req.doc_id, "ask", prompt, f"{context}\n\nQuestion: {clean_q}")
+    result = await call_llm(
+        req.doc_id, "ask", prompt, f"{context}\n\nQuestion: {clean_q}", llm_variant=req.llm_variant
+    )
     timings["llm_ms"] = round((time.time() - t0) * 1000, 1)
 
     # Source citations
@@ -574,7 +967,7 @@ async def mentor_chat(req: MentorRequest):
     start = time.time()
     _validate_doc_ready(req.doc_id)
     await _ensure_doc_assets_ready(req.doc_id)
-    result = await ask_mentor(req.doc_id, req.question, req.history)
+    result = await ask_mentor(req.doc_id, req.question, req.history, llm_variant=req.llm_variant)
     await add_xp(req.user_id, "ask")
     return result
 
@@ -584,7 +977,15 @@ async def start_quiz(req: QuizStartRequest):
     """Generate a quiz — adaptive: prioritizes weak topics."""
     _validate_doc_ready(req.doc_id)
     await _ensure_doc_assets_ready(req.doc_id)
-    return await generate_quiz(req.doc_id, req.quiz_type, user_id=req.user_id)
+    return await generate_quiz(
+        req.doc_id,
+        req.quiz_type,
+        user_id=req.user_id,
+        llm_variant=req.llm_variant,
+        refresh=bool(req.refresh),
+        previous_output=req.previous_output,
+        source_chunk_ids=list(req.source_chunk_ids) if req.source_chunk_ids else None,
+    )
 
 
 @router.post("/quiz/submit")
@@ -592,15 +993,18 @@ async def submit_quiz(req: QuizSubmitRequest):
     """Submit quiz answers — now tracks topic accuracy for personalization."""
     evaluation = evaluate_quiz(req.questions, req.answers)
 
+    qtype = req.quiz_type if req.quiz_type in ("quiz", "mock_test") else "quiz"
+
     # Track topic accuracy (personalization)
-    record_quiz_results(req.user_id, evaluation.get("details", []))
+    record_quiz_results(req.user_id, evaluation.get("details", []), doc_id=req.doc_id)
+    record_quiz_answer_logs(req.user_id, req.doc_id, evaluation.get("details", []), quiz_type=qtype)
 
     await add_xp(req.user_id, "quiz_complete", correct_count=evaluation["correct"])
 
     db = SessionLocal()
     try:
         attempt = Attempt(
-            user_id=req.user_id, doc_id=req.doc_id, quiz_type="quiz",
+            user_id=req.user_id, doc_id=req.doc_id, quiz_type=qtype,
             score=evaluation["score"], total=evaluation["total"], accuracy=evaluation["accuracy"],
         )
         db.add(attempt)
@@ -622,7 +1026,15 @@ async def generate(req: GenerateRequest):
     if req.content_type not in valid_types:
         raise HTTPException(400, f"Invalid content type. Must be one of: {valid_types}")
 
-    result = await generate_content(req.doc_id, req.content_type, req.query)
+    result = await generate_content(
+        req.doc_id,
+        req.content_type,
+        req.query,
+        llm_variant=req.llm_variant,
+        refresh=bool(req.refresh),
+        previous_output=req.previous_output,
+        source_chunk_ids=list(req.source_chunk_ids) if req.source_chunk_ids else None,
+    )
     await add_xp(req.user_id, "ask")
     return result
 
@@ -639,13 +1051,24 @@ async def search_endpoint(req: SearchRequest):
     if not clean_q:
         raise HTTPException(400, "Invalid or empty query")
 
-    result = await search(req.doc_id, clean_q, mode=req.mode, user_id=req.user_id)
+    result = await search(
+        req.doc_id,
+        clean_q,
+        mode=req.mode,
+        user_id=req.user_id,
+        llm_variant=req.llm_variant,
+    )
     if isinstance(result, dict) and isinstance(result.get("results"), list):
         breadcrumb_map = get_doc_breadcrumb_map(req.doc_id)
+        subtopic_by_title = await _get_subtopic_by_title(req.doc_id)
+        db = SessionLocal()
+        doc = db.query(Document).filter(Document.doc_id == req.doc_id).first()
+        filename = doc.filename if doc and doc.filename else req.doc_id
+        db.close()
+        normalized = []
         for item in result["results"]:
-            sec = item.get("section", "")
-            if sec and sec in breadcrumb_map:
-                item["hierarchy_path"] = breadcrumb_map[sec]
+            normalized.append(_normalize_search_item(item, req.doc_id, filename, breadcrumb_map, subtopic_by_title))
+        result["results"] = normalized
     await add_xp(req.user_id, "ask")
     return result
 
@@ -657,6 +1080,114 @@ async def search_suggest(doc_id: str, q: str = Query("", min_length=1), limit: i
     await _ensure_doc_assets_ready(doc_id)
     suggestions = suggest_autocomplete(q, doc_id, limit=limit)
     return {"doc_id": doc_id, "query": q, "suggestions": suggestions}
+
+
+@router.get("/search/suggest/user/{user_id}")
+async def search_suggest_user(user_id: str, q: str = Query("", min_length=1), limit: int = Query(5, ge=1, le=20)):
+    """User-scoped autocomplete suggestions from all ready/partially_ready docs."""
+    suggestions = suggest_autocomplete_user(q, user_id=user_id, limit=limit)
+    return {"user_id": user_id, "query": q, "suggestions": suggestions}
+
+
+@router.post("/search/user")
+async def search_user_endpoint(req: UserSearchRequest):
+    """User-scoped global search across all ready/partially_ready documents."""
+    clean_q = sanitize_query(req.query)
+    if not clean_q:
+        raise HTTPException(400, "Invalid or empty query")
+
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).filter(
+            Document.user_id == req.user_id,
+            Document.status.in_(["ready", "partially_ready"]),
+        ).order_by(Document.created_at.desc()).all()
+    finally:
+        db.close()
+
+    if not docs:
+        return {"mode": req.mode, "results": [], "query": clean_q, "user_id": req.user_id}
+
+    merged: list[dict] = []
+    did_you_mean = None
+    original_query = clean_q
+    for doc in docs:
+        penalty = 0.75 if doc.status == "partially_ready" else 1.0
+        try:
+            await _ensure_doc_assets_ready(doc.doc_id)
+            r = await search(doc.doc_id, clean_q, mode=req.mode, user_id=req.user_id)
+            if not did_you_mean and r.get("did_you_mean"):
+                did_you_mean = r.get("did_you_mean")
+                original_query = r.get("original_query", clean_q)
+            breadcrumb_map = get_doc_breadcrumb_map(doc.doc_id)
+            subtopic_by_title = await _get_subtopic_by_title(doc.doc_id)
+            for it in r.get("results", []):
+                normalized = _normalize_search_item(it, doc.doc_id, doc.filename or doc.doc_id, breadcrumb_map, subtopic_by_title)
+                # Penalize partially_ready docs so they rank lower than fully indexed docs.
+                if penalty != 1.0:
+                    normalized["score"] = normalized.get("score", 0) * penalty
+                merged.append(normalized)
+        except Exception:
+            logger.warning("[search/user] failed on doc=%s", doc.doc_id, exc_info=True)
+            continue
+
+    merged.sort(key=lambda x: x.get("score", 0), reverse=True)
+    out = {
+        "mode": req.mode,
+        "query": clean_q,
+        "user_id": req.user_id,
+        "results": merged[: max(1, req.limit)],
+    }
+    if did_you_mean:
+        out["did_you_mean"] = did_you_mean
+        out["original_query"] = original_query
+    await add_xp(req.user_id, "ask")
+    return out
+
+
+@router.get("/node_chunks/{doc_id}/{node_id}")
+async def node_chunks(doc_id: str, node_id: str, user_id: str = Query("default_user")):
+    """Read-only: return chunks belonging to a unified-hierarchy subtopic node.
+
+    Used by the Search page inline reader to render exact chunk content.
+    """
+    # Minimal user-scope guard: ensure the doc belongs to this user.
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.doc_id == doc_id, Document.user_id == user_id).first()
+        if not doc:
+            raise HTTPException(404, "Document not found")
+    finally:
+        db.close()
+
+    if not node_id:
+        raise HTTPException(400, "Missing node_id")
+
+    chunks_path = CHUNKS_DIR / f"{doc_id}.json"
+    if not chunks_path.exists():
+        return {"doc_id": doc_id, "node_id": node_id, "chunks": []}
+
+    try:
+        with open(chunks_path, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
+    except Exception:
+        chunks = []
+
+    subtopic_by_title = await _get_subtopic_by_title(doc_id)
+
+    out = []
+    for c in chunks or []:
+        cid = c.get("chunk_id", "") or ""
+        text = c.get("text", "") or ""
+        page = int(c.get("page", 1) or 1)
+        sec_title = (c.get("section", "") or "").strip()
+        expected_title = _expected_subtopic_title(sec_title, subtopic_by_title)
+        candidate = subtopic_by_title.get(expected_title, [])
+        mapped_node_id = _pick_node_id(candidate, page) if expected_title else ""
+        if mapped_node_id == node_id and cid:
+            out.append({"chunk_id": cid, "text": text, "page": page, "node_id": node_id})
+
+    return {"doc_id": doc_id, "node_id": node_id, "chunks": out}
 
 
 # --- NEW: EVALUATION ---
@@ -765,11 +1296,23 @@ async def get_weakness_dashboard(user_id: str):
     # Generate overall study plan
     study_plan = generate_study_plan(weak_topics)
 
+    subject_summary = {}
+    for row in all_topics:
+        subj = row.get("subject", "General Studies")
+        if subj not in subject_summary:
+            subject_summary[subj] = {"subject": subj, "total": 0, "weak": 0, "moderate": 0, "strong": 0}
+        subject_summary[subj]["total"] += 1
+        st = row.get("status", "moderate")
+        if st not in ("weak", "moderate", "strong"):
+            st = "moderate"
+        subject_summary[subj][st] += 1
+
     return {
         "user_id": user_id,
         "weak_topics": enriched_weak,
         "all_topics": all_topics,
         "study_plan": study_plan,
+        "subject_summary": list(subject_summary.values()),
     }
 
 
@@ -930,6 +1473,7 @@ async def course_action(req: CourseActionRequest):
         f"course_{action}",
         prompt,
         f"Section: {node_heading}\n\nContent:\n{node_content}",
+        llm_variant=req.llm_variant,
     )
     raw = result.get("answer", "")
     answer = _format_course_ai_output(raw, action, node_heading)
@@ -969,7 +1513,7 @@ async def course_chat(req: CourseChatRequest):
         f"Question: {q}"
     )
 
-    result = await call_llm(req.doc_id, "course_chat", prompt, context)
+    result = await call_llm(req.doc_id, "course_chat", prompt, context, llm_variant=req.llm_variant)
     await add_xp(req.user_id, "ask")
     return {"answer": result.get("answer", ""), "node_id": req.node_id, "section": section_heading}
 
@@ -982,17 +1526,25 @@ async def list_user_documents(user_id: str):
     db = SessionLocal()
     try:
         docs = db.query(Document).filter(Document.user_id == user_id).order_by(Document.created_at.desc()).all()
+        items = []
+        for doc in docs:
+            queue_info = await get_doc_queue_info(doc.doc_id)
+            items.append({
+                "doc_id": doc.doc_id,
+                "filename": doc.filename or doc.doc_id,
+                "status": doc.status,
+                "processing_stage": doc.processing_stage,
+                "progress": _doc_progress(doc),
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "error": doc.error_message,
+                "retry_count": doc.retry_count,
+                "last_error": doc.last_error,
+                "queue_position": queue_info.get("doc_position_in_queue") if queue_info else None,
+                "estimated_wait": queue_info.get("estimated_wait") if queue_info else None,
+            })
         return {
-            "documents": [
-                {
-                    "doc_id": doc.doc_id,
-                    "filename": doc.filename or doc.doc_id,
-                    "status": doc.status,
-                    "processing_stage": doc.processing_stage,
-                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                }
-                for doc in docs
-            ]
+            "queue": queue_stats(),
+            "documents": items,
         }
     finally:
         db.close()
@@ -1011,6 +1563,10 @@ async def serve_pdf(doc_id: str):
                 path=str(file_path),
                 media_type=media,
                 filename=f"{doc_id}{ext}",
+                headers={
+                    # Force browser to render in-viewer instead of downloading.
+                    "Content-Disposition": f'inline; filename="{doc_id}{ext}"',
+                },
             )
     raise HTTPException(404, "PDF file not found")
 

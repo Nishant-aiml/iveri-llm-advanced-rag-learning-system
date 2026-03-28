@@ -11,8 +11,84 @@ const STATE = {
   docFilename: localStorage.getItem('iveri_docfn')|| null,
   xp: 0, level: 1, streak: 0,
   currentQuiz: null,
+  currentQuizMeta: null,
   _flashcards: [], _fcIdx: 0,
+  /** Sarvam chat: "105b" | "30b" — persisted under `iveri_llm` */
+  llmVariant:  localStorage.getItem('iveri_llm') === '30b' ? '30b' : '105b',
+  refreshBundle: {
+    quiz:        { doc_id: null, source_chunk_ids: [], previous_output: null },
+    mock_test:   { doc_id: null, source_chunk_ids: [], previous_output: null },
+    flashcards:  { doc_id: null, source_chunk_ids: [], previous_output: null },
+    summary:     { doc_id: null, source_chunk_ids: [], previous_output: null },
+  },
 };
+
+function getLlmVariant() {
+  return STATE.llmVariant === '30b' ? '30b' : '105b';
+}
+
+function setLlmVariant(v) {
+  STATE.llmVariant = (v === '30b' ? '30b' : '105b');
+  localStorage.setItem('iveri_llm', STATE.llmVariant);
+  syncLlmModelToggle();
+}
+
+function syncLlmModelToggle() {
+  const cur = getLlmVariant();
+  document.querySelectorAll('.llm-model-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.variant === cur);
+  });
+}
+
+function captureFeatureContext(feature, apiResponse) {
+  const ids = (apiResponse.source_chunks || []).map((s) => s.chunk_id).filter(Boolean);
+  const b = STATE.refreshBundle[feature] || {};
+  b.doc_id = STATE.docId;
+  b.source_chunk_ids = ids;
+  STATE.refreshBundle[feature] = b;
+}
+
+function getRefreshPayload(feature) {
+  const b = STATE.refreshBundle[feature] || {};
+  if (!STATE.docId || b.doc_id !== STATE.docId) {
+    return { previous_output: null, source_chunk_ids: null };
+  }
+  return {
+    previous_output: b.previous_output || null,
+    source_chunk_ids: b.source_chunk_ids?.length ? [...b.source_chunk_ids] : null,
+  };
+}
+
+function setRefreshLoading(feature, loading) {
+  document.querySelectorAll(`[data-refresh-feature="${feature}"]`).forEach((btn) => {
+    btn.disabled = !!loading;
+    btn.textContent = loading ? 'Regenerating…' : 'Refresh 🔄';
+  });
+}
+
+async function refreshFeature(feature) {
+  if (!STATE.docId) return;
+  try {
+    setRefreshLoading(feature, true);
+    if (feature === 'quiz') {
+      if (!el('quizContent')) return;
+      await loadQuizType('quiz', 'quizContent', { refresh: true });
+    } else if (feature === 'mock_test') {
+      if (!el('mocktestContent')) return;
+      await loadQuizType('mock_test', 'mocktestContent', { refresh: true });
+    } else if (feature === 'flashcards') {
+      if (!el('flashcardsContent')) return;
+      await initFlashcards({ refresh: true });
+    } else if (feature === 'summary') {
+      if (!el('summaryContent')) return;
+      await initSummary({ refresh: true });
+    }
+  } catch (e) {
+    console.error('[refreshFeature]', feature, e);
+  } finally {
+    setRefreshLoading(feature, false);
+  }
+}
 
 // Helper to persist doc selection
 function _saveDocState() {
@@ -38,6 +114,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     smartRoute();
     fetchScore();
+    syncLlmModelToggle();
   } else {
     showLogin();
   }
@@ -59,6 +136,7 @@ function showUpload() {
 function showApp() {
   s('authView','none'); s('uploadView','none'); s('appShell','flex');
   window.scrollTo(0, 0);
+  syncLlmModelToggle();
   go('library');
 }
 function doLogout() {
@@ -66,7 +144,7 @@ function doLogout() {
   Object.assign(STATE, {userId:null, username:null, email:null, docId:null, docFilename:null});
   showLogin();
 }
-function newDoc() { STATE.docId=null; STATE.docFilename=null; _saveDocState(); go('library'); }
+function newDoc() { resetRefreshBundle(); STATE.docId=null; STATE.docFilename=null; _saveDocState(); go('library'); }
 
 // Smart routing: logged-in users always go to Library (which has inline upload)
 async function smartRoute() {
@@ -201,10 +279,70 @@ if (dropZone) {
   dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor=''; });
   dropZone.addEventListener('drop', e => {
     e.preventDefault(); dropZone.style.borderColor='';
-    if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+    const fs = Array.from(e.dataTransfer?.files || []);
+    if (fs.length === 1) uploadFile(fs[0]);
+    else if (fs.length > 1) uploadFilesMulti(fs);
   });
 }
-if (fileInput) fileInput.addEventListener('change', e => e.target.files[0] && uploadFile(e.target.files[0]));
+if (fileInput) {
+  fileInput.addEventListener('change', e => {
+    const fs = Array.from(e.target.files || []);
+    if (fs.length === 1) uploadFile(fs[0]);
+    else if (fs.length > 1) uploadFilesMulti(fs);
+  });
+}
+
+async function uploadFilesMulti(files) {
+  if (!files || !files.length) return;
+
+  setUploadFeedback(`Uploading ${files.length} document(s)…`);
+  setProgress(20, 'Uploading…');
+
+  const fd = new FormData();
+  // FastAPI endpoint accepts `files[]` (alias) for list[UploadFile].
+  for (const f of files) fd.append('files[]', f);
+  fd.append('user_id', STATE.userId || 'guest');
+
+  try {
+    const res = await fetch('/api/upload/multi', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+    const accepted = data.accepted_files || data.accepted || [];
+    const rejected = data.rejected_files || data.rejected || [];
+
+    // Update the active doc to the first accepted file to keep existing UX flow working.
+    if (accepted.length) {
+      const first = accepted[0];
+      if (STATE.docId !== first.doc_id) resetRefreshBundle();
+      STATE.docId = first.doc_id;
+      STATE.docFilename = first.filename || first.doc_id;
+      _saveDocState();
+      const fn = el('topbarFilename');
+      if (fn) fn.textContent = STATE.docFilename;
+      if (accepted.length > 1) {
+        setUploadFeedback(
+          `Queued ${accepted.length} docs (${rejected.length} rejected). Processing first…`
+        );
+      } else if (rejected.length) {
+        setUploadFeedback(`Processing (some rejected): ${rejected.length} rejected.`);
+      }
+    } else {
+      throw new Error(rejected?.[0]?.error || 'No accepted files');
+    }
+
+    // Poll only the first doc so the progress bar remains meaningful.
+    if (data.accepted?.[0]?.status === 'ready' || data.accepted_files?.[0]?.status === 'ready' ) {
+      setProgress(100, 'Done!');
+      setTimeout(onDocReady, 700);
+    } else {
+      pollStatus();
+    }
+  } catch (e) {
+    setUploadFeedback(e.message, true);
+    s('progressSection', 'none');
+  }
+}
 
 async function uploadFile(file) {
   setUploadFeedback(`Uploading "${file.name}"…`);
@@ -221,6 +359,7 @@ async function uploadFile(file) {
     const res = await fetch('/api/upload', { method:'POST', body:fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    if (STATE.docId !== data.doc_id) resetRefreshBundle();
     STATE.docId = data.doc_id;
     STATE.docFilename = data.filename || file.name;
     if (data.status === 'ready') {
@@ -244,8 +383,16 @@ async function pollStatus() {
     } else if (d.status === 'failed') {
       throw new Error(d.error || 'Processing failed');
     } else {
-      const stageMap = { uploaded:40, parsed:60, structured:75, embedded:90, indexed:98 };
-      setProgress(stageMap[d.processing_stage] || 55, `Stage: ${d.processing_stage || 'processing'}…`);
+      // No fake progress: interpret progress based on `status`, not only `processing_stage`.
+      let pct = 40;
+      if (d.status === 'partially_ready') {
+        pct = 70; // embeddings/vector ready
+      } else if (d.status === 'processing') {
+        if (d.processing_stage === 'uploaded' || d.processing_stage === 'parsed') pct = 20;      // parsing
+        else if (d.processing_stage === 'structured' || d.processing_stage === 'embedded') pct = 40; // chunking
+        else if (d.processing_stage === 'indexed') pct = 70; // embeddings done, BM25/indexing may still run
+      }
+      setProgress(pct, `Stage: ${d.processing_stage || 'processing'}…`);
       setTimeout(pollStatus, 3000);
     }
   } catch(e) {
@@ -372,90 +519,131 @@ async function initMockTest() {
   await loadQuizType('mock_test', 'mocktestContent');
 }
 
-async function loadQuizType(type, containerId) {
+async function loadQuizType(type, containerId, opts = {}) {
   const container = el(containerId);
+  const refresh = opts.refresh === true;
   container.innerHTML = skeletonBlocks(3);
   try {
-    const d = await api('quiz/start', { doc_id:STATE.docId, user_id:STATE.userId, quiz_type:type });
+    const body = { doc_id: STATE.docId, user_id: STATE.userId, quiz_type: type };
+    if (refresh) {
+      body.refresh = true;
+      const ex = getRefreshPayload(type);
+      if (ex.previous_output) body.previous_output = ex.previous_output;
+      if (ex.source_chunk_ids?.length) body.source_chunk_ids = ex.source_chunk_ids;
+    }
+    const d = await api('quiz/start', body);
     STATE.currentQuiz = d.questions;
-    container.innerHTML = renderQuiz(d.questions, type==='mock_test');
+    const quizKey = type === 'mock_test' ? 'mock' : 'quiz';
+    STATE.currentQuizMeta = { containerId, quizKey };
+    captureFeatureContext(type, d);
+    try {
+      STATE.refreshBundle[type].previous_output = JSON.stringify(d.questions || []);
+    } catch (_) {}
+    const mainId = type === 'mock_test' ? 'mocktestMain' : 'quizMain';
+    const inner = renderQuiz(d.questions, type === 'mock_test', quizKey);
+    container.innerHTML = `<div class="feature-body" id="${mainId}">${inner}</div>`;
   } catch(e) {
     container.innerHTML = errorState(e.message);
   }
 }
 
-function renderQuiz(questions, isMock=false) {
+function renderQuiz(questions, isMock=false, quizKey='quiz') {
   if (!questions?.length) return errorState('No questions generated.');
 
+  const letters = ['A','B','C','D'];
+  const submitTarget = isMock ? 'mocktestContent' : 'quizContent';
+  const submitLabel = isMock ? 'Mock Test' : 'Quiz';
   const qHtml = questions.map((q,i) => {
-    const qText = q.q || q.question || '';
+    const qText = q.question || q.q || '';
     const qDiff = q.difficulty || 'easy';
     const qOpts = q.options || [];
     return `
     <div class="q-card" id="qc_${i}">
       <div class="q-card-header">
-        <div class="q-text">${i+1}. ${esc(qText)}</div>
+        <div>
+          <div class="q-text">${i+1}. ${esc(qText)}</div>
+          ${isMock && q.topic ? `<div class="q-meta-topic">Topic: ${esc(q.topic)}</div>` : ''}
+        </div>
         <span class="q-badge badge-${qDiff.toLowerCase()}">${qDiff.toUpperCase()}</span>
       </div>
       <div class="q-options">
-        ${qOpts.map((opt,j) => `
-          <div class="q-option" id="opt_${i}_${j}" onclick="selectOpt(${i},${j})">
-            <input type="radio" name="q${i}" value="${esc(opt)}" />${esc(opt)}
+        ${qOpts.slice(0,4).map((opt,j) => `
+          <div class="q-option" id="opt_${quizKey}_${i}_${j}" onclick="selectOpt('${quizKey}',${i},${j})">
+            <input type="radio" name="q_${quizKey}_${i}" value="${letters[j]}" />${letters[j]}. ${esc(
+              String(opt || '').replace(/^[A-D][\)\.\:\-]\s*/i,'')
+            )}
           </div>
         `).join('')}
       </div>
-      <div class="q-explanation" id="exp_${i}"></div>
+      <div class="q-explanation" id="exp_${quizKey}_${i}"></div>
     </div>
   `}).join('');
 
   return `<div>${qHtml}
-    <button class="btn btn-primary submit-quiz-btn" onclick="submitQuiz('${isMock?'mocktestContent':'quizContent'}')">
-      Submit ${isMock?'Mock Test':'Quiz'}
+    <button class="btn btn-primary submit-quiz-btn" onclick="submitQuiz('${submitTarget}','${quizKey}')">
+      Submit ${submitLabel}
     </button></div>`;
 }
 
-function selectOpt(qi, oi) {
+function selectOpt(quizKey, qi, oi) {
   // clear selected visualson for this question
-  document.querySelectorAll(`[id^="opt_${qi}_"]`).forEach(d => d.classList.remove('selected'));
-  el(`opt_${qi}_${oi}`).classList.add('selected');
+  document.querySelectorAll(`[id^="opt_${quizKey}_${qi}_"]`).forEach(d => d.classList.remove('selected'));
+  el(`opt_${quizKey}_${qi}_${oi}`).classList.add('selected');
   el(`qc_${qi}`).querySelector('input:checked') && null;
   // Also check radio
-  const radio = el(`opt_${qi}_${oi}`).querySelector('input');
+  const radio = el(`opt_${quizKey}_${qi}_${oi}`).querySelector('input');
   if (radio) { radio.checked = true; }
 }
 
-async function submitQuiz(containerId) {
+async function submitQuiz(containerId, quizKey='quiz') {
   if (!STATE.currentQuiz?.length) return;
+  const container = el(containerId);
   const answers = STATE.currentQuiz.map((_,i) => {
-    const selected = document.querySelector(`[id^="opt_${i}_"].selected`);
+    const selected = container?.querySelector(`[id^="opt_${quizKey}_${i}_"].selected`);
     return selected ? selected.querySelector('input')?.value || '' : '';
   });
+  if (answers.some(a => !a)) {
+    alert('Please select an option for all questions before submitting.');
+    return;
+  }
 
   try {
+    const quizType = containerId === 'mocktestContent' ? 'mock_test' : 'quiz';
     const d = await api('quiz/submit', {
       doc_id: STATE.docId, user_id: STATE.userId,
-      questions: STATE.currentQuiz, answers
+      questions: STATE.currentQuiz, answers,
+      quiz_type: quizType,
     });
 
     // details array from evaluate_quiz
     const evals = d.details || d.evaluations || [];
     STATE.currentQuiz.forEach((q,i) => {
       const res = evals[i] || {};
-      const correctAns = (q.answer || res.correct_answer || '').trim().toUpperCase();
-      document.querySelectorAll(`[id^="opt_${i}_"]`).forEach(div => {
+      const correctAns = (q.correct_answer || res.correct_answer || '').trim().toUpperCase();
+      container.querySelectorAll(`[id^="opt_${quizKey}_${i}_"]`).forEach(div => {
         div.style.pointerEvents='none';
         const v = (div.querySelector('input')?.value || '').trim();
-        // Match by letter prefix (e.g. "A)" vs answer "A") or full text
-        const optLetter = v.charAt(0).toUpperCase();
-        if (optLetter === correctAns || v === res.correct_answer) {
+        const optLetter = v.toUpperCase();
+        if (optLetter === correctAns) {
           div.classList.add('correct');
         } else if (div.classList.contains('selected') && !res.is_correct) {
           div.classList.add('wrong');
         }
       });
-      const expEl = el(`exp_${i}`);
-      if (expEl && res.correct_answer) {
-        expEl.innerHTML = `<strong>Correct Answer:</strong> ${esc(res.correct_answer)}`;
+      const expEl = el(`exp_${quizKey}_${i}`);
+      if (expEl) {
+        const uaLetter = (res.user_answer_letter || res.user_answer || '').toString().trim().toUpperCase();
+        const uaText = (res.user_answer_text || '').toString();
+        const caLetter = (res.correct_answer || correctAns || '').toString().trim().toUpperCase();
+        const caText = (res.correct_answer_text || '').toString();
+        const explanation = (res.explanation || q.explanation || '').toString();
+        expEl.innerHTML = `
+          <div class="quiz-result-lines">
+            <div><strong>Your answer:</strong> ${esc(uaLetter || '—')}${uaText ? ` — ${esc(uaText)}` : ''}</div>
+            <div><strong>Correct answer:</strong> ${esc(caLetter || '—')}${caText ? ` — ${esc(caText)}` : ''}</div>
+          </div>
+          ${explanation ? `<details class="quiz-explain-details"><summary>Show explanation</summary>
+            <div class="quiz-explain-body">${esc(explanation)}</div></details>` : ''}`;
         expEl.style.display='block';
       }
     });
@@ -468,19 +656,32 @@ async function submitQuiz(containerId) {
       <div class="score-num">${d.correct}<span> / ${d.total}</span></div>
       <div class="score-msg">You scored ${pct}%${pct>=80?' 🎉':pct>=50?' Keep it up!':' Keep practicing!'}</div>
     `;
-    el(containerId).querySelector('div').prepend(banner);
-    el(containerId).querySelector('.submit-quiz-btn')?.remove();
+    const wrapId = containerId === 'mocktestContent' ? 'mocktestMain' : 'quizMain';
+    const wrap = el(wrapId);
+    const target = wrap?.firstElementChild || container.querySelector('.feature-body')?.firstElementChild;
+    if (target) target.prepend(banner);
+    else container.querySelector('div')?.prepend(banner);
+    container.querySelector('.submit-quiz-btn')?.remove();
     fetchScore();
   } catch(e) { alert('Submission failed: ' + e.message); }
 }
 
 // ── FLASHCARDS ───────────────────────────────────────────────
-async function initFlashcards() {
+async function initFlashcards(opts = {}) {
   if (!requireDoc('flashcardsContent')) return;
   const container = el('flashcardsContent');
+  const refresh = opts.refresh === true;
   container.innerHTML = `<div class="skeleton-block tall"></div>`;
   try {
-    const d = await api('generate', { doc_id:STATE.docId, user_id:STATE.userId, content_type:'flashcards' });
+    const body = { doc_id: STATE.docId, user_id: STATE.userId, content_type: 'flashcards' };
+    if (refresh) {
+      body.refresh = true;
+      const ex = getRefreshPayload('flashcards');
+      if (ex.previous_output) body.previous_output = ex.previous_output;
+      if (ex.source_chunk_ids?.length) body.source_chunk_ids = ex.source_chunk_ids;
+    }
+    const d = await api('generate', body);
+    if (d.error) throw new Error(d.error);
     let cards = d.flashcards || d.content?.flashcards || [];
 
     // If API returned raw text, try to parse it
@@ -490,6 +691,10 @@ async function initFlashcards() {
 
     if (!cards?.length) throw new Error('No flashcards generated. Try uploading a more detailed document.');
     STATE._flashcards = cards; STATE._fcIdx = 0;
+    captureFeatureContext('flashcards', d);
+    try {
+      STATE.refreshBundle.flashcards.previous_output = JSON.stringify(cards);
+    } catch (_) {}
     renderFcView(container);
   } catch(e) { container.innerHTML = errorState(e.message); }
 }
@@ -554,15 +759,28 @@ function fcNav(dir) {
 }
 
 // ── SUMMARY ──────────────────────────────────────────────────
-async function initSummary() {
+async function initSummary(opts = {}) {
   if (!requireDoc('summaryContent')) return;
   const container = el('summaryContent');
+  const refresh = opts.refresh === true;
   container.innerHTML = `<div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block tall"></div>`;
   try {
-    const d = await api('generate', { doc_id:STATE.docId, user_id:STATE.userId, content_type:'summary' });
-    // summary endpoint returns {summary: "...", bullets: [...]} or {content: "..."}
+    const body = { doc_id: STATE.docId, user_id: STATE.userId, content_type: 'summary' };
+    if (refresh) {
+      body.refresh = true;
+      const ex = getRefreshPayload('summary');
+      if (ex.previous_output) body.previous_output = ex.previous_output;
+      if (ex.source_chunk_ids?.length) body.source_chunk_ids = ex.source_chunk_ids;
+    }
+    const d = await api('generate', body);
+    if (d.error) throw new Error(d.error);
+    // summary endpoint returns {bullets: [...], explanation: "..."} (strict)
     let html = '';
-    if (d.summary) {
+
+    if (d.bullets?.length) {
+      const exp = d.explanation ? `<p>${esc(d.explanation)}</p>` : '';
+      html = `${exp}<ul>${d.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
+    } else if (d.summary) {
       html = `<p>${esc(d.summary)}</p>`;
       if (d.bullets?.length) {
         html += '<ul>' + d.bullets.map(b => `<li>${esc(b)}</li>`).join('') + '</ul>';
@@ -570,6 +788,9 @@ async function initSummary() {
     } else {
       html = renderMd(d.content || d.raw || 'No summary generated.');
     }
+    captureFeatureContext('summary', d);
+    const bulletTxt = (d.bullets || []).join('\n');
+    STATE.refreshBundle.summary.previous_output = [bulletTxt, d.explanation || ''].filter(Boolean).join('\n\n').slice(0, 12000);
     container.innerHTML = `<div class="summary-box">${html}</div>`;
   } catch(e) { container.innerHTML = errorState(e.message); }
 }
@@ -663,11 +884,17 @@ function renderMd(text) {
 }
 
 // ── API HELPERS ───────────────────────────────────────────────
+const _LLM_API_ENDPOINTS = new Set(['ask', 'mentor', 'generate', 'quiz/start', 'search']);
+
 async function api(endpoint, body) {
+  let payload = body;
+  if (body && typeof body === 'object' && _LLM_API_ENDPOINTS.has(endpoint)) {
+    payload = { ...body, llm_variant: getLlmVariant() };
+  }
   const res = await fetch('/api/' + endpoint, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
@@ -693,34 +920,12 @@ async function doSearch() {
   const q = el('searchInput').value.trim();
   if (!q) return;
 
-  // Auto-select first available doc if none selected
-  if (!STATE.docId) {
-    try {
-      const ud = await get(`documents/${encodeURIComponent(STATE.userId)}`);
-      const docs = (ud.documents || []).filter(d => d.status === 'ready');
-      if (docs.length) {
-        STATE.docId = docs[0].doc_id;
-        STATE.docFilename = docs[0].filename || docs[0].doc_id;
-        const fn = el('topbarFilename');
-        if (fn) fn.textContent = STATE.docFilename;
-        const sb = el('topbarStatus');
-        if (sb) sb.textContent = 'READY';
-      } else {
-        alert('No processed documents found. Please upload a document first.');
-        return;
-      }
-    } catch(e) {
-      alert('Please select a document from the Library first.');
-      return;
-    }
-  }
-
   const btn = el('searchBtn');
   btn.disabled = true; btn.textContent = 'Searching…';
   el('searchResults').innerHTML = skeletonBlocks(3);
 
   try {
-    const d = await api('search', { doc_id: STATE.docId, query: q, mode: _searchMode, user_id: STATE.userId });
+    const d = await api('search/user', { user_id: STATE.userId, query: q, mode: _searchMode, limit: 30 });
     renderSearchResults(d, q);
   } catch(e) {
     el('searchResults').innerHTML = errorState(e.message);
@@ -746,7 +951,7 @@ async function fetchSearchSuggestions() {
   }
   if (!box) return;
 
-  if (!q || q.length < 2 || !STATE.docId) {
+  if (!q || q.length < 2 || !STATE.userId) {
     box.style.display = 'none';
     box.innerHTML = '';
     _suggestActiveIndex = -1;
@@ -754,7 +959,7 @@ async function fetchSearchSuggestions() {
   }
 
   try {
-    const d = await get(`search/suggest/${encodeURIComponent(STATE.docId)}?q=${encodeURIComponent(q)}&limit=5`);
+    const d = await get(`search/suggest/user/${encodeURIComponent(STATE.userId)}?q=${encodeURIComponent(q)}&limit=5`);
     const suggestions = d.suggestions || [];
     if (!suggestions.length) {
       box.style.display = 'none';
@@ -830,6 +1035,53 @@ function onSuggestItemClick(e, btnEl) {
   _applySuggestion(val, true);
 }
 
+function onDidYouMeanClick(e, linkEl) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  const raw = (linkEl?.dataset?.q || '').toString();
+  const val = decodeURIComponent(raw || '');
+  _applySuggestion(val, true);
+}
+
+function onSearchResultCardClick(e, cardEl) {
+  if (e?.target?.closest?.('button')) return;
+  const docId = decodeURIComponent((cardEl?.dataset?.docId || '').toString());
+  const page = Number(cardEl?.dataset?.page || '1') || 1;
+  const query = decodeURIComponent((cardEl?.dataset?.query || '').toString());
+  if (!docId) return;
+  const q = new URLSearchParams();
+  q.set('doc_id', docId);
+  q.set('page', String(page));
+  if (query) q.set('query', query);
+  window.open(`/pdf-viewer.html?${q.toString()}`, '_blank', 'noopener');
+}
+
+function onOpenCourseFromSearch(e, btnEl) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  const docId = decodeURIComponent((btnEl?.dataset?.docId || '').toString());
+  const docName = decodeURIComponent((btnEl?.dataset?.docName || '').toString());
+  const nodeId = decodeURIComponent((btnEl?.dataset?.nodeId || '').toString());
+  const chunkId = decodeURIComponent((btnEl?.dataset?.chunkId || '').toString());
+  const query = decodeURIComponent((btnEl?.dataset?.query || '').toString());
+  const snippet = decodeURIComponent((btnEl?.dataset?.snippet || '').toString());
+  openCourseView(docId, docName, nodeId, chunkId, query, snippet);
+}
+
+function onOpenPdfFromSearch(e, btnEl) {
+  e?.preventDefault?.();
+  e?.stopPropagation?.();
+  const docId = decodeURIComponent((btnEl?.dataset?.docId || '').toString());
+  const page = Number(btnEl?.dataset?.page || '1') || 1;
+  const query = decodeURIComponent((btnEl?.dataset?.query || '').toString());
+  if (!docId) return;
+  const q = new URLSearchParams();
+  q.set('doc_id', docId);
+  q.set('page', String(page));
+  if (query) q.set('query', query);
+  window.open(`/pdf-viewer.html?${q.toString()}`, '_blank', 'noopener');
+}
+
 function renderSearchResults(d, query) {
   const mode = d.mode || _searchMode;
   const results = d.results || [];
@@ -850,9 +1102,10 @@ function renderSearchResults(d, query) {
 
   // "Did you mean?" typo correction suggestion
   if (d.did_you_mean) {
+    const didYouMeanEncoded = encodeURIComponent(d.did_you_mean);
     html += `<div class="sr-typo-box">
       <span class="sr-typo-icon">💡</span>
-      <span>Showing results for <a href="#" onclick="event.preventDefault(); el('searchInput').value='${esc(d.did_you_mean)}'; doSearch();" class="sr-typo-link">${esc(d.did_you_mean)}</a></span>
+      <span>Showing results for <a href="#" data-q="${didYouMeanEncoded}" onclick="onDidYouMeanClick(event,this)" class="sr-typo-link">${esc(d.did_you_mean)}</a></span>
       <span class="sr-typo-original">Search instead for: <em>${esc(d.original_query || query)}</em></span>
     </div>`;
   }
@@ -874,18 +1127,42 @@ function renderSearchResults(d, query) {
 
   // Google-like result cards
   if (results.length) {
-    const docName = STATE.docFilename || 'Document';
     html += `<div class="sr-results-list">`;
     results.forEach((r, i) => {
-      const title = r.section || `Section ${i + 1}`;
-      const snippet = _highlightTerms(r.text || '', query);
+      const title = r.title || r.section || `Section ${i + 1}`;
+      const snippet = _highlightTerms(r.snippet || r.text || '', query);
       const page = r.page || 1;
       const score = r.score || 0;
-      const path = r.hierarchy_path || '';
-      html += `<div class="sr-google-card">
+      const path = r.section_path || r.hierarchy_path || '';
+      const docName = r.filename || r.doc_id || 'Document';
+      const docId = r.doc_id || '';
+      const dDocId = encodeURIComponent(docId);
+      const dDocName = encodeURIComponent(docName);
+      const dNodeId = encodeURIComponent(r.node_id || '');
+      const dChunkId = encodeURIComponent(r.chunk_id || '');
+      const dQuery = encodeURIComponent(query || '');
+      const dSnippet = encodeURIComponent(r.snippet || r.text || '');
+      html += `<div class="sr-google-card" role="button" tabindex="0"
+        data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}"
+        onclick="onSearchResultCardClick(event,this)">
         <div class="sr-g-title">${esc(title)}</div>
         <div class="sr-g-url">📄 ${esc(docName)} · Page ${page} · Score: ${score}${path ? ' · ' + esc(path) : ''}</div>
         <div class="sr-g-snippet">${snippet}</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-primary btn-sm" type="button"
+            data-doc-id="${dDocId}"
+            data-doc-name="${dDocName}"
+            data-node-id="${dNodeId}"
+            data-chunk-id="${dChunkId}"
+            data-query="${dQuery}"
+            data-snippet="${dSnippet}"
+            onclick="onOpenCourseFromSearch(event,this)">
+            Open in Course
+          </button>
+          <button class="btn btn-ghost btn-sm" type="button"
+            data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}"
+            onclick="onOpenPdfFromSearch(event,this)">Open in PDF</button>
+        </div>
       </div>`;
     });
     html += `</div>`;
@@ -998,13 +1275,14 @@ async function initWeakness() {
     const weak   = d.weak_topics || d.weak || [];
     const allTop = d.all_topics  || d.scores || [];
     const studyPlan = d.study_plan || null;
-    renderWeakness(container, weak, allTop, studyPlan);
+    const subjectSummary = d.subject_summary || [];
+    renderWeakness(container, weak, allTop, studyPlan, subjectSummary);
   } catch(e) {
     container.innerHTML = errorState('Could not load weakness data: ' + e.message);
   }
 }
 
-function renderWeakness(container, weak, allTopics, studyPlan) {
+function renderWeakness(container, weak, allTopics, studyPlan, subjectSummary = []) {
   if (!allTopics.length && !weak.length) {
     container.innerHTML = `<div class="empty-state">
       <p>No topic data yet. Complete a quiz first to see your weakness analysis!</p>
@@ -1040,10 +1318,39 @@ function renderWeakness(container, weak, allTopics, studyPlan) {
     <div class="ws-card ws-card-red"><div class="ws-num">${weakCount}</div><div class="ws-label">Weak Topics</div></div>
   </div>`;
 
-  // Weak topics first
+  if (subjectSummary.length) {
+    html += `<h3 class="weakness-section-title">Subject-wise Overview</h3>`;
+    html += `<div class="subject-summary-grid">` + subjectSummary
+      .sort((a,b) => (a.subject || '').localeCompare(b.subject || ''))
+      .map(s => `<div class="subject-summary-card">
+        <div class="subject-summary-head">📚 ${esc(s.subject || 'General Studies')}</div>
+        <div class="subject-summary-meta">
+          <span class="status-weak">Weak: ${s.weak || 0}</span>
+          <span class="status-moderate">Moderate: ${s.moderate || 0}</span>
+          <span class="status-strong">Strong: ${s.strong || 0}</span>
+        </div>
+      </div>`)
+      .join('') + `</div>`;
+  }
+
+  const bySubject = (arr) => {
+    const out = {};
+    (arr || []).forEach((t) => {
+      const s = (t.subject || 'General Studies').trim() || 'General Studies';
+      if (!out[s]) out[s] = [];
+      out[s].push(t);
+    });
+    return out;
+  };
+  const weakBySubject = bySubject(weak);
+  const allBySubject = bySubject(allTopics);
+
+  // Weak topics first (grouped by subject)
   if (weak.length) {
     html += `<h3 class="weakness-section-title">⚠️ Topics Needing Attention</h3>`;
-    weak.forEach(t => {
+    Object.keys(weakBySubject).sort().forEach((subject) => {
+      html += `<div class="topic-subject-head">📚 ${esc(subject)}</div>`;
+      weakBySubject[subject].forEach(t => {
       const pct = Math.round(t.accuracy * 100);
       const trend = t.trend || {};
       const advice = t.advice || {};
@@ -1067,13 +1374,16 @@ function renderWeakness(container, weak, allTopics, studyPlan) {
           </ul>` : ''}
         </div>` : (t.recommendation ? `<div class="topic-rec">${esc(t.recommendation)}</div>` : '')}
       </div>`;
+      });
     });
   }
 
   // All topics performance
   if (allTopics.length) {
     html += `<h3 class="weakness-section-title">All Topics Performance</h3>`;
-    allTopics.forEach(t => {
+    Object.keys(allBySubject).sort().forEach((subject) => {
+      html += `<div class="topic-subject-head">📚 ${esc(subject)}</div>`;
+      allBySubject[subject].forEach(t => {
       const pct = Math.round(t.accuracy * 100);
       const colorClass = t.status === 'strong' ? 'bar-strong' : t.status === 'moderate' ? 'bar-moderate' : 'bar-weak';
       html += `<div class="topic-card">
@@ -1087,6 +1397,7 @@ function renderWeakness(container, weak, allTopics, studyPlan) {
         </div>
         <div class="topic-detail">${t.correct}/${t.total} correct</div>
       </div>`;
+      });
     });
   }
 
@@ -1158,6 +1469,9 @@ function renderLibrary(container, userDocs, hierarchy) {
           <span class="lib-doc-name">📑 ${esc(name)}</span>
           ${date ? `<span class="lib-doc-date">${date}</span>` : ''}
           <span class="lib-doc-status status-${doc.status}">${doc.status}</span>
+          ${doc.queue_position !== null && doc.queue_position !== undefined
+            ? `<span class="lib-doc-queue"> · Queue #${doc.queue_position} · ETA ${fmt(doc.estimated_wait)} jobs</span>`
+            : ''}
         </div>
         <div class="lib-doc-actions">
           ${doc.status === 'ready' ? `
@@ -1311,8 +1625,16 @@ async function _libPollStatus(fb, prog, fill, lbl, subject) {
     } else if (d.status === 'failed') {
       throw new Error(d.error || 'Processing failed');
     } else {
-      const stageMap = { uploaded:40, parsed:60, structured:75, embedded:90, indexed:98 };
-      if (fill) fill.style.width = (stageMap[d.processing_stage] || 55) + '%';
+      // No fake progress: interpret progress based on `status`.
+      let pct = 40;
+      if (d.status === 'partially_ready') {
+        pct = 70;
+      } else if (d.status === 'processing') {
+        if (d.processing_stage === 'uploaded' || d.processing_stage === 'parsed') pct = 20;
+        else if (d.processing_stage === 'structured' || d.processing_stage === 'embedded') pct = 40;
+        else if (d.processing_stage === 'indexed') pct = 70;
+      }
+      if (fill) fill.style.width = pct + '%';
       if (lbl) lbl.textContent = `Stage: ${d.processing_stage || 'processing'}…`;
       setTimeout(() => _libPollStatus(fb, prog, fill, lbl, subject), 3000);
     }
@@ -1632,17 +1954,27 @@ function loadLibraryDoc(docId, title) {
   activateDoc(docId, title);
 }
 
-function openCourseView(docId, title, nodeId='') {
+function openCourseView(docId, title, nodeId='', chunkId='', query='', snippet='') {
   const q = new URLSearchParams({
     doc_id: docId || '',
     title: title || docId || 'Course',
   });
   if (nodeId) q.set('node_id', nodeId);
+  if (chunkId) q.set('chunk_id', chunkId);
+  if (query) q.set('query', query);
+  if (snippet) q.set('snippet', snippet);
   window.open(`/course.html?${q.toString()}`, '_blank', 'noopener');
 }
 
 // Activate a document as the current working document
+function resetRefreshBundle() {
+  ['quiz', 'mock_test', 'flashcards', 'summary'].forEach((k) => {
+    STATE.refreshBundle[k] = { doc_id: null, source_chunk_ids: [], previous_output: null };
+  });
+}
+
 function activateDoc(docId, title) {
+  if (STATE.docId !== docId) resetRefreshBundle();
   STATE.docId = docId;
   STATE.docFilename = title || docId;
   _saveDocState();

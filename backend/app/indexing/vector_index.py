@@ -11,7 +11,7 @@ from app.state import (
     faiss_indexes, chunk_store, faiss_lock,
     doc_locks, evict_if_needed, touch_doc
 )
-from app.rag.embedder import embed_texts
+from app.rag.embedder import embed_texts, embed_texts_async
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,10 @@ async def build_vector_index(doc_id: str, chunks: list[dict]):
         return
 
     texts = [c["text"] for c in chunks]
-    embeddings = embed_texts(texts)
+    try:
+        embeddings = await embed_texts_async(texts)
+    except Exception:
+        embeddings = embed_texts(texts)
     embeddings = np.array(embeddings, dtype="float32")
 
     # Build FAISS index

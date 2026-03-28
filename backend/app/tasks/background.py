@@ -16,15 +16,25 @@ from app.core.course_structure import save_course_structure
 from app.core.unified_hierarchy import upsert_doc_hierarchy
 from app.indexing.builder import build_indexes, load_indexes
 from app.indexing.vector_index import vector_index_exists
+from app.indexing.vector_index import build_vector_index
+from app.indexing.bm25_index import BM25Index, save_bm25_index
+from app.config import CHUNKS_DIR
 from app.state import pending_updates
+from app.state import bm25_indexes, chunk_store
 
 logger = logging.getLogger(__name__)
 
 STAGES = ["uploaded", "parsed", "structured", "embedded", "indexed"]
 
 
-def _update_doc_status(doc_id: str, status: str = None, stage: str = None,
-                       error: str = None):
+def _update_doc_status(
+    doc_id: str,
+    status: str = None,
+    stage: str = None,
+    error: str = None,
+    retry_count: int | None = None,
+    last_error: str | None = None,
+):
     """Update document status in DB."""
     db = SessionLocal()
     try:
@@ -36,6 +46,11 @@ def _update_doc_status(doc_id: str, status: str = None, stage: str = None,
                 doc.processing_stage = stage
             if error:
                 doc.error_message = error
+            if retry_count is not None:
+                # Preserve externally incremented retry_count from the API.
+                doc.retry_count = max(int(doc.retry_count or 0), int(retry_count))
+            if last_error is not None:
+                doc.last_error = last_error
             if status == "ready":
                 doc.processed_time = datetime.now(timezone.utc)
             db.commit()
@@ -88,7 +103,7 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
                 temp_doc.close()
                 parser_type = route_parser(sample_text, page_count)
 
-            raw_content = extract_document(file_path, parser_type)
+            raw_content = await asyncio.to_thread(extract_document, file_path, parser_type)
             _update_doc_status(doc_id, stage="parsed")
             logger.info(f"[{doc_id}] Parsed with {parser_type} ({time.time()-start_time:.1f}s)")
         else:
@@ -101,13 +116,13 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
             if raw_content is None:
                 logger.info(f"[{doc_id}] Re-parsing for structuring (resume)")
                 if ext == ".xlsx":
-                    raw_content = extract_document(file_path, "excel")
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "excel")
                 else:
-                    raw_content = extract_document(file_path, "pymupdf")
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "pymupdf")
 
-            normalized = normalize_content(raw_content, doc_id)
-            save_course_structure(normalized, doc_id=doc_id)
-            upsert_doc_hierarchy(doc_id, normalized, subject="General Studies")
+            normalized = await asyncio.to_thread(normalize_content, raw_content, doc_id)
+            await asyncio.to_thread(save_course_structure, normalized, doc_id=doc_id)
+            await asyncio.to_thread(upsert_doc_hierarchy, doc_id, normalized, "General Studies")
             _update_doc_status(doc_id, stage="structured")
             sec_count = len(normalized.get("sections", []))
             logger.info(f"[{doc_id}] Structured: {sec_count} sections")
@@ -121,13 +136,13 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
             if normalized is None:
                 logger.info(f"[{doc_id}] Re-processing for chunking (resume)")
                 if ext == ".xlsx":
-                    raw_content = extract_document(file_path, "excel")
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "excel")
                 else:
-                    raw_content = extract_document(file_path, "pymupdf")
-                normalized = normalize_content(raw_content, doc_id)
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "pymupdf")
+                normalized = await asyncio.to_thread(normalize_content, raw_content, doc_id)
 
-            # New hierarchical chunker
-            chunks = chunk_document(normalized)
+            # Hierarchical chunking (sync + CPU-heavy): offload to thread
+            chunks = await asyncio.to_thread(chunk_document, normalized)
             _update_doc_status(doc_id, stage="embedded")
             logger.info(f"[{doc_id}] Chunked: {len(chunks)} chunks ({time.time()-start_time:.1f}s)")
         else:
@@ -136,34 +151,62 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
         # --- Stage: DUAL INDEXING (FAISS + BM25) ---
         if _should_run_stage(current_stage, "indexed"):
             logger.info(f"[{doc_id}] Stage: DUAL INDEXING")
+            vector_built = False
+
+            bm25_on_disk = (CHUNKS_DIR / f"{doc_id}_bm25.json").exists()
             if chunks is None:
                 if vector_index_exists(doc_id):
                     logger.info(f"[{doc_id}] Index already on disk, loading...")
                     await load_indexes(doc_id)
+                    chunks = chunk_store.get(doc_id)
+                    vector_built = True
+                    # If only vector exists but BM25 is missing, allow partial retrieval.
+                    if not bm25_on_disk:
+                        _update_doc_status(doc_id, status="partially_ready", stage="embedded")
+                        logger.info("[%s] Status -> partially_ready (vector exists, BM25 missing)", doc_id)
                 else:
                     logger.info(f"[{doc_id}] Re-processing for indexing (resume)")
                     if ext == ".xlsx":
-                        raw_content = extract_document(file_path, "excel")
+                        raw_content = await asyncio.to_thread(extract_document, file_path, "excel")
                     else:
-                        raw_content = extract_document(file_path, "pymupdf")
-                    normalized = normalize_content(raw_content, doc_id)
-                    chunks = chunk_document(normalized)
+                        raw_content = await asyncio.to_thread(extract_document, file_path, "pymupdf")
+                    normalized = await asyncio.to_thread(normalize_content, raw_content, doc_id)
+                    chunks = await asyncio.to_thread(chunk_document, normalized)
 
             if chunks:
-                # Build both FAISS + BM25 indexes
-                await build_indexes(doc_id, chunks)
+                # Build FAISS only if vector index isn't already available.
+                if not vector_built:
+                    await build_vector_index(doc_id, chunks)
+                    _update_doc_status(doc_id, status="partially_ready", stage="embedded")
+                    logger.info("[%s] Status -> partially_ready (vector built)", doc_id)
+
+                # Build BM25 only if missing on disk.
+                bm25_on_disk = (CHUNKS_DIR / f"{doc_id}_bm25.json").exists()
+                if not bm25_on_disk:
+                    bm25 = BM25Index()
+                    await asyncio.to_thread(bm25.build, chunks)
+                    await asyncio.to_thread(save_bm25_index, doc_id, bm25)
+                    bm25_indexes[doc_id] = bm25
 
             _update_doc_status(doc_id, stage="indexed")
         else:
             if not vector_index_exists(doc_id):
                 logger.warning(f"[{doc_id}] Stage says indexed but no files found, rebuilding...")
                 if ext == ".xlsx":
-                    raw_content = extract_document(file_path, "excel")
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "excel")
                 else:
-                    raw_content = extract_document(file_path, "pymupdf")
-                normalized = normalize_content(raw_content, doc_id)
-                chunks = chunk_document(normalized)
-                await build_indexes(doc_id, chunks)
+                    raw_content = await asyncio.to_thread(extract_document, file_path, "pymupdf")
+                normalized = await asyncio.to_thread(normalize_content, raw_content, doc_id)
+                chunks = await asyncio.to_thread(chunk_document, normalized)
+
+                await build_vector_index(doc_id, chunks)
+                _update_doc_status(doc_id, status="partially_ready", stage="embedded")
+                logger.info("[%s] Status -> partially_ready (rebuild path)", doc_id)
+                bm25 = BM25Index()
+                await asyncio.to_thread(bm25.build, chunks)
+                await asyncio.to_thread(save_bm25_index, doc_id, bm25)
+                bm25_indexes[doc_id] = bm25
+                _update_doc_status(doc_id, stage="indexed")
 
         # --- DONE ---
         _update_doc_status(doc_id, status="ready", stage="indexed")
@@ -200,7 +243,13 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
             await asyncio.sleep(1)
             await process_document_pipeline(doc_id, file_path, retry_count + 1)
         else:
-            _update_doc_status(doc_id, status="failed", error=str(e))
+            _update_doc_status(
+                doc_id,
+                status="failed",
+                error=str(e),
+                retry_count=retry_count,
+                last_error=str(e),
+            )
 
 
 async def flush_pending_updates():
