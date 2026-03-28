@@ -16,6 +16,8 @@
 ![GitHub repo size](https://img.shields.io/github/repo-size/Nishant-aiml/iveri-llm-advanced-rag-learning-system?style=flat-square&color=blue)
 ![GitHub last commit](https://img.shields.io/github/last-commit/Nishant-aiml/iveri-llm-advanced-rag-learning-system?style=flat-square&color=green)
 ![GitHub stars](https://img.shields.io/github/stars/Nishant-aiml/iveri-llm-advanced-rag-learning-system?style=flat-square&color=yellow)
+![GitHub forks](https://img.shields.io/github/forks/Nishant-aiml/iveri-llm-advanced-rag-learning-system?style=flat-square&color=orange)
+![GitHub issues](https://img.shields.io/github/issues/Nishant-aiml/iveri-llm-advanced-rag-learning-system?style=flat-square&color=red)
 
 <br/>
 
@@ -45,7 +47,7 @@
 ## 🧩 Problem → Solution (simple)
 
 ### Problem
-- PDFs are hard to study from: no structure, slow navigation, and “chat with PDF” hallucinates.
+- PDFs are hard to study from: no structure, slow navigation, and "chat with PDF" hallucinates.
 - Search is either keyword-only (misses meaning) or vector-only (misses exact terms).
 - Students need feedback loops: practice + weak-topic tracking + targeted revision.
 
@@ -53,7 +55,7 @@
 IVERI LLM runs an end-to-end pipeline:
 - **Ingestion**: parse → clean → chunk → index (BM25 + FAISS) → build **unified hierarchy**
 - **Retrieval**: Hybrid RRF fusion + optional rerank + MMR diversity
-- **Trust layer**: confidence + citations; low confidence returns “not in document”
+- **Trust layer**: confidence + citations; low confidence returns "not in document"
 - **Learning UX**: Course View + Search + Quiz + Flashcards + Weakness dashboard
 
 <table>
@@ -67,6 +69,8 @@ IVERI LLM runs an end-to-end pipeline:
 - 📊 Weakness Detection & Personalized Recommendations
 - 🃏 Flashcards for quick revision
 - 🏆 Gamification — XP, Levels, Leaderboard
+- 📚 Course View — Structured hierarchical reading
+- 💡 AI Mentor — Context-aware chat assistant
 
 </td>
 <td width="50%">
@@ -78,6 +82,8 @@ IVERI LLM runs an end-to-end pipeline:
 - 🎯 50+ question evaluation engine
 - 📋 Structured summary generation
 - 🏅 Real-time class leaderboard
+- 🗂️ Folder & tag-based content management
+- 📊 Per-topic analytics & weakness reports
 
 </td>
 </tr>
@@ -162,7 +168,7 @@ End-to-end grounded Q&A with strict constraints + citations + confidence. Low co
 <img src="https://img.shields.io/badge/BM25-keyword-green?style=flat-square" />
 
 ---
-Keyword / Hybrid / AI / Auto routing + autocomplete suggestions from PDF vocabulary + “Did you mean?” typo correction.
+Keyword / Hybrid / AI / Auto routing + autocomplete suggestions from PDF vocabulary + "Did you mean?" typo correction.
 
 </td>
 <td align="center" width="33%">
@@ -255,14 +261,15 @@ Built-in evaluation: Recall@k, MRR, accuracy, hallucination rate. Ablation study
 | Layer | Technology | Badge |
 |:---:|:---:|:---:|
 | **Backend** | FastAPI + Uvicorn | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) |
-| **LLM** | Sarvam-M (HTTP API) | ![AI](https://img.shields.io/badge/Sarvam--M-FF6B35?style=flat-square&logo=openai&logoColor=white) |
-| **Embeddings** | sentence-transformers (BGE) | ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white) |
+| **LLM** | Sarvam-M (105B / 30B) | ![AI](https://img.shields.io/badge/Sarvam--M-FF6B35?style=flat-square&logo=openai&logoColor=white) |
+| **Embeddings** | sentence-transformers (MiniLM-L6-v2) | ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white) |
 | **Vector DB** | FAISS (facebook) | ![Meta](https://img.shields.io/badge/FAISS-4285F4?style=flat-square&logo=meta&logoColor=white) |
-| **Keyword** | BM25 (custom) | ![Search](https://img.shields.io/badge/BM25-2ecc71?style=flat-square&logo=elasticsearch&logoColor=white) |
+| **Keyword** | BM25 (custom implementation) | ![Search](https://img.shields.io/badge/BM25-2ecc71?style=flat-square&logo=elasticsearch&logoColor=white) |
 | **Database** | SQLite + SQLAlchemy 2.0 | ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white) |
 | **PDF** | PyMuPDF + Docling + OCR | ![PDF](https://img.shields.io/badge/PyMuPDF-FA0F00?style=flat-square&logo=adobeacrobatreader&logoColor=white) |
 | **Frontend** | Vanilla JS + CSS (SPA) | ![JS](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black) |
 | **HTTP** | httpx (async) | ![HTTP](https://img.shields.io/badge/httpx-async-blue?style=flat-square) |
+| **Excel** | openpyxl | ![Excel](https://img.shields.io/badge/openpyxl-217346?style=flat-square&logo=microsoftexcel&logoColor=white) |
 
 </div>
 
@@ -334,6 +341,49 @@ flowchart LR
 
 <br/>
 
+## 📑 12-Step Ingestion Pipeline (Deep Dive)
+
+Every uploaded document goes through these stages before it's ready for retrieval:
+
+| Step | Stage | Description |
+|:---:|:---|:---|
+| 1 | **File Input** | Accept PDF or Excel via REST API upload |
+| 2 | **Parser Routing** | Auto-detect format → PyMuPDF (fast), Docling (complex), OCR (scanned) |
+| 3 | **Raw Extraction** | Extract raw text, layout blocks, and tables |
+| 4 | **Cleaning Pipeline** | Remove headers/footers, fix broken lines, normalize whitespace |
+| 5 | **Structure Builder** | Convert to section-based hierarchy: H1 → H2 → H3 |
+| 6 | **Structured JSON** | `{ doc_id, sections: [{ heading, level, content, page }] }` |
+| 7 | **Hierarchical Chunking** | Parent layer (section summary) + child layer (paragraph chunks) |
+| 8 | **Adaptive Sizing** | < 100 words → merge · 200–350 → ideal · > 500 → split |
+| 9 | **Table Processing** | Convert tables → `Entity → Attribute → Value` structured text |
+| 10 | **Metadata Injection** | Attach `doc_id`, `section`, `page`, `level`, `type` to each chunk |
+| 11 | **Embedding Generation** | `text → 384-dim vector` via MiniLM-L6-v2 |
+| 12 | **Dual Indexing** | Store into FAISS (vector) + BM25 (keyword) + SQLite (metadata) |
+
+<br/>
+
+## 🔎 13-Step Query Pipeline (Deep Dive)
+
+Every user question goes through this real-time retrieval pipeline:
+
+| Step | Stage | Description |
+|:---:|:---|:---|
+| 1 | **User Input** | Accept keyword, question, or conceptual query |
+| 2 | **Query Classification** | Classify as factual / conceptual / multi-hop |
+| 3 | **Query Routing** | Route to optimal retrieval strategy per query type |
+| 4 | **Query Expansion** | Generate 2–3 query variations for better recall |
+| 5 | **FAISS Vector Search** | Semantic search → top-k by cosine similarity |
+| 6 | **BM25 Keyword Search** | Exact keyword match → top-k by term frequency |
+| 7 | **RRF Hybrid Fusion** | Merge rankings via `score = 1/(k + rank)` with dynamic weights |
+| 8 | **Candidate Pool** | Produce top 20–30 candidate chunks |
+| 9 | **Conditional Reranking** | If confidence gap > threshold → apply BGE cross-encoder |
+| 10 | **MMR Diversity** | Remove near-duplicates (threshold 0.85), ensure topical coverage |
+| 11 | **Token-Budgeted Context** | Select best chunks within 1500-token budget |
+| 12 | **LLM Generation** | Sarvam-M generates answer from filtered context + strict prompt |
+| 13 | **Trust Layer** | Attach confidence score + citations; low confidence → safe fallback |
+
+<br/>
+
 ## 🔥 Retrieval — RRF Fusion Formula
 
 ```python
@@ -364,8 +414,8 @@ rrf_score(chunk) = vector_weight × 1/(rrf_k + vector_rank)
 
 ## 🔍 Search modes (with examples)
 
-- **Keyword (BM25)**: best for exact terms like “process control block”
-- **Hybrid (BM25 + FAISS via RRF)**: best for mixed queries like “why round robin increases context switches”
+- **Keyword (BM25)**: best for exact terms like "process control block"
+- **Hybrid (BM25 + FAISS via RRF)**: best for mixed queries like "why round robin increases context switches"
 - **AI**: hybrid + (optional rerank) + grounded answer (sources + confidence)
 - **Auto**: routes by query length/complexity
 
@@ -381,43 +431,214 @@ curl -X POST http://localhost:8000/api/search \
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/fire.png" width="100%" />
 </div>
 
+## 🏆 Gamification & XP System
+
+The platform incentivizes continuous learning through a robust gamification layer:
+
+| Action | XP Earned |
+|:---|:---:|
+| 📤 Upload a document | +20 XP |
+| 🤖 Ask AI a question | +5 XP |
+| 📝 Complete a quiz | +50 XP |
+| ✅ Each correct answer | +10 XP |
+| 🔥 Daily login streak | +30 XP |
+
+**Level Progression**: XP thresholds determine student levels, displayed on a real-time leaderboard with cached rankings for instant load.
+
+<br/>
+
+## 🛡️ Trust & Confidence System
+
+The trust layer prevents hallucination and ensures answer reliability:
+
+```
+┌──────────────────────────────────────────────────┐
+│  Confidence Score Calculation                    │
+│                                                  │
+│  Based on:                                       │
+│  • Retrieval relevance scores                    │
+│  • Reranker confidence                           │
+│  • Agreement between top chunks                  │
+│                                                  │
+│  ┌────────────┬──────────┬─────────────────────┐ │
+│  │  Score      │ Level    │ Action              │ │
+│  ├────────────┼──────────┼─────────────────────┤ │
+│  │  > 0.80    │ 🟢 High  │ Return full answer  │ │
+│  │  0.25–0.80 │ 🟡 Med   │ Answer + disclaimer │ │
+│  │  < 0.25    │ 🔴 Low   │ "Not in document"   │ │
+│  └────────────┴──────────┴─────────────────────┘ │
+└──────────────────────────────────────────────────┘
+```
+
+<br/>
+
 ## 📦 Project Structure
 
 ```
-timepass/
+iveri-llm-advanced-rag-learning-system/
 ├── 📂 backend/
 │   ├── 📂 app/
-│   │   ├── 🚀 main.py                 ← FastAPI app + lifespan
-│   │   ├── ⚙️ config.py               ← All environment config
-│   │   ├── 🧠 state.py                ← Shared in-memory state
-│   │   ├── 🗄️ database.py             ← SQLAlchemy ORM
+│   │   ├── 🚀 main.py                 ← FastAPI app + lifespan (startup/shutdown)
+│   │   ├── ⚙️ config.py               ← All environment config + tuning knobs
+│   │   ├── 🧠 state.py                ← Shared in-memory state (indexes, caches)
+│   │   ├── 🗄️ database.py             ← SQLAlchemy 2.0 ORM models & sessions
 │   │   │
-│   │   ├── 📂 api/routes.py           ← All REST endpoints
-│   │   ├── 📂 parser/                 ← PyMuPDF / Docling / OCR
-│   │   ├── 📂 chunking/              ← Hierarchical chunker
-│   │   ├── 📂 rag/                    ← Embedder, FAISS, LLM client
-│   │   ├── 📂 indexing/              ← Vector + BM25 indexes
-│   │   ├── 📂 retrieval/             ← Hybrid RRF + MMR
-│   │   ├── 📂 reranker/              ← Conditional BGE reranker
-│   │   ├── 📂 query/                 ← Router + Expander
-│   │   ├── 📂 llm/trust.py           ← Confidence + Citations
-│   │   ├── 📂 evaluation/            ← 50+ test suite
-│   │   ├── 📂 generators/            ← Prompt templates
-│   │   ├── 📂 personalization/       ← Weakness detection
-│   │   ├── 📂 gamification/          ← XP + Leaderboard
-│   │   ├── 📂 search/                ← Search engine layer
-│   │   ├── 📂 core/                  ← Classifier + Library
-│   │   └── 📂 tasks/                 ← Background workers
+│   │   ├── 📂 api/routes.py           ← All REST endpoints (~60KB, 40+ routes)
+│   │   ├── 📂 parser/                 ← PyMuPDF / Docling / OCR parsers
+│   │   ├── 📂 chunking/              ← Hierarchical chunker + adaptive sizing
+│   │   ├── 📂 rag/                    ← Embedder, FAISS store, LLM client, retriever
+│   │   ├── 📂 indexing/              ← Vector + BM25 index builders
+│   │   ├── 📂 retrieval/             ← Hybrid RRF fusion + MMR diversity
+│   │   ├── 📂 reranker/              ← Conditional BGE cross-encoder reranker
+│   │   ├── 📂 query/                 ← Query classifier, router & expander
+│   │   ├── 📂 llm/trust.py           ← Confidence scoring + citation extraction
+│   │   ├── 📂 evaluation/            ← 50+ test suite + metrics engine
+│   │   ├── 📂 generators/            ← Prompt templates (v4) for all tasks
+│   │   ├── 📂 personalization/       ← Weakness detection + recommendations
+│   │   ├── 📂 gamification/          ← XP engine + level system + leaderboard
+│   │   ├── 📂 search/                ← Search engine layer (keyword/hybrid/AI)
+│   │   ├── 📂 core/                  ← LLM classifier + content library manager
+│   │   └── 📂 tasks/                 ← Background workers + pipeline queue pool
 │   │
 │   ├── 📂 frontend/
-│   │   ├── 🌐 index.html             ← SPA shell
-│   │   ├── ⚡ app.js                  ← Full app logic (~61KB)
-│   │   └── 🎨 styles.css             ← Premium UI (~40KB)
+│   │   ├── 🌐 index.html             ← SPA shell (auth + all views)
+│   │   ├── ⚡ app.js                  ← Full app logic (~92KB)
+│   │   ├── 🎨 styles.css             ← Premium UI (~44KB)
+│   │   ├── 📖 course.html/js/css     ← NPTEL-like course reader
+│   │   ├── 🔍 search.html/js/css     ← Standalone search page
+│   │   ├── 📄 pdf-viewer.html        ← In-browser PDF viewer
+│   │   └── 🎨 favicon.svg            ← App icon
 │   │
-│   └── 📋 requirements.txt
+│   ├── 📋 requirements.txt
+│   └── 📂 storage/                    ← FAISS + BM25 indexes + uploads
 │
-└── 📂 storage/                        ← FAISS + BM25 indexes
+├── 📂 docs/                            ← Technical documentation
+│   ├── about.md                       ← System identity & architecture layers
+│   ├── features.md                    ← Complete feature catalog
+│   └── flows.md                       ← System / data / user flow reference
+│
+├── 📄 .env.example                     ← Environment variable template
+├── 📄 .gitignore
+└── 📄 README.md                        ← You are here
 ```
+
+<br/>
+
+## 📡 API Endpoints Reference
+
+The system exposes **40+ REST endpoints** via FastAPI. Here are the key endpoint groups:
+
+<details>
+<summary><strong>📤 Document Management</strong></summary>
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `POST` | `/api/upload` | Upload PDF/Excel for processing |
+| `GET` | `/api/documents` | List all uploaded documents |
+| `DELETE` | `/api/documents/{doc_id}` | Delete a document and its indexes |
+| `GET` | `/api/status/{doc_id}` | Check ingestion pipeline status |
+
+</details>
+
+<details>
+<summary><strong>🤖 AI & RAG</strong></summary>
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `POST` | `/api/ask` | Ask AI a question (full RAG pipeline) |
+| `POST` | `/api/search` | Search documents (keyword/hybrid/AI) |
+| `POST` | `/api/summarize` | Generate section/document summary |
+| `POST` | `/api/explain` | Get AI explanation for a topic |
+
+</details>
+
+<details>
+<summary><strong>📝 Quiz & Learning</strong></summary>
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `POST` | `/api/quiz/generate` | Generate MCQ quiz from content |
+| `POST` | `/api/quiz/submit` | Submit quiz answers for grading |
+| `POST` | `/api/mock-test/generate` | Generate full mock test |
+| `POST` | `/api/flashcards/generate` | Generate flashcard set |
+
+</details>
+
+<details>
+<summary><strong>📊 Analytics & Personalization</strong></summary>
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `GET` | `/api/weakness/{user_id}` | Get weak topics analysis |
+| `GET` | `/api/recommendations/{user_id}` | Get study recommendations |
+| `GET` | `/api/leaderboard` | Get XP leaderboard |
+| `GET` | `/api/progress/{user_id}` | Get user learning progress |
+
+</details>
+
+<details>
+<summary><strong>📚 Content Library</strong></summary>
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `GET` | `/api/library/subjects` | List all subjects |
+| `POST` | `/api/library/classify` | Auto-classify document into subject |
+| `GET` | `/api/library/hierarchy/{doc_id}` | Get course view hierarchy |
+| `DELETE` | `/api/library/document/{doc_id}` | Remove document from library |
+
+</details>
+
+<br/>
+
+## ⚙️ Configuration Reference
+
+All configuration is managed through environment variables and `config.py`:
+
+<details>
+<summary><strong>🔧 Environment Variables (.env)</strong></summary>
+
+| Variable | Default | Description |
+|:---|:---|:---|
+| `SARVAM_API_KEY` | *(required)* | API key for Sarvam LLM |
+| `SARVAM_API_URL` | `https://api.sarvam.ai/v1/chat/completions` | LLM API endpoint |
+| `SARVAM_MODEL_105B` | `sarvam-105b` | Large model ID |
+| `SARVAM_MODEL_30B` | `sarvam-30b` | Fast model ID |
+| `LLM_TEMPERATURE` | `0.2` | Default generation temperature |
+| `LLM_TIMEOUT_SECONDS` | `120` | Request timeout |
+
+</details>
+
+<details>
+<summary><strong>🎛️ RAG Pipeline Tuning</strong></summary>
+
+| Parameter | Value | Purpose |
+|:---|:---:|:---|
+| `CHUNK_SIZE_WORDS` | 350 | Target chunk size |
+| `CHUNK_OVERLAP_WORDS` | 50 | Overlap between chunks |
+| `CHUNK_MIN_WORDS` | 100 | Merge threshold |
+| `CHUNK_MAX_WORDS` | 500 | Split threshold |
+| `MAX_CONTEXT_TOKENS` | 1500 | LLM context budget |
+| `RRF_K_DEFAULT` | 10 | RRF fusion constant |
+| `MMR_LAMBDA` | 0.7 | Relevance vs diversity |
+| `MMR_SIMILARITY_THRESHOLD` | 0.85 | Near-duplicate detection |
+| `RERANK_MIN_CANDIDATES` | 5 | Minimum for reranking |
+| `RERANK_SCORE_GAP` | 0.02 | Confidence gap trigger |
+| `CONFIDENCE_FALLBACK_THRESHOLD` | 0.25 | Below this → safe fallback |
+
+</details>
+
+<details>
+<summary><strong>🏆 Gamification XP Values</strong></summary>
+
+| Action | XP |
+|:---|:---:|
+| Upload document | 20 |
+| Ask AI question | 5 |
+| Complete quiz | 50 |
+| Correct answer | 10 |
+| Daily streak | 30 |
+
+</details>
 
 <br/>
 
@@ -452,8 +673,22 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | 🌐 **Web App** | `http://localhost:8000` |
 | 📖 **Swagger API** | `http://localhost:8000/docs` |
 | 📄 **ReDoc** | `http://localhost:8000/redoc` |
+| 📚 **Course View** | `http://localhost:8000/course.html` |
+| 🔍 **Search** | `http://localhost:8000/search.html` |
 
 </div>
+
+<br/>
+
+### 🐳 Docker (Optional)
+
+```bash
+# Build
+docker build -t iveri-llm .
+
+# Run
+docker run -p 8000:8000 --env-file .env iveri-llm
+```
 
 <br/>
 
@@ -465,7 +700,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | **MRR** | Mean Reciprocal Rank of first relevant chunk |
 | **Answer Accuracy** | LLM answer correctness vs ground truth |
 | **Hallucination Rate** | % of answers with ungrounded content |
-| **Latency (p50/p95)** | End-to-end response time |
+| **Not Found Accuracy** | Correctly identifying missing information |
+| **Latency (p50/p95)** | End-to-end response time distribution |
 
 ### Ablation Study
 
@@ -478,6 +714,32 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 <br/>
 
+## 🧪 Testing
+
+The project includes multiple test suites:
+
+```bash
+# Quick sanity check
+python test_quick.py
+
+# End-to-end integration tests
+python test_e2e.py
+
+# Ingestion pipeline tests
+python test_e2e_ingest.py
+
+# Batching & partial upload tests
+python test_e2e_batching_and_partial.py
+
+# LLM response contract tests
+python test_ai_strict_contracts.py
+
+# LLM connectivity test
+python test_llm.py
+```
+
+<br/>
+
 ## 🛣️ Roadmap
 
 - [ ] 🔄 Streaming LLM responses (real-time)
@@ -487,12 +749,75 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 - [ ] 🔍 Elasticsearch for scalable keyword search
 - [ ] 📱 Mobile-responsive redesign
 - [ ] 🧠 Fine-tuned domain embeddings
+- [ ] 🌍 Multi-language support (Hindi, regional languages via Sarvam)
+- [ ] 📊 Advanced analytics with visualization charts
+- [ ] 🔐 Role-based access control (Student / Teacher / Admin)
+- [ ] 📤 Export quiz results as PDF/CSV reports
+
+<br/>
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how to get started:
+
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+3. **Commit** your changes: `git commit -m 'Add amazing feature'`
+4. **Push** to the branch: `git push origin feature/amazing-feature`
+5. **Open** a Pull Request
+
+Please ensure your code follows the existing patterns and include tests for new features.
+
+<br/>
+
+## ❓ FAQ
+
+<details>
+<summary><strong>What LLM does this use?</strong></summary>
+
+IVERI LLM uses **Sarvam-M** (available in 105B and 30B variants), an Indian AI model optimized for multilingual understanding. You need a Sarvam API key to use the system. Toggle between models from the UI.
+
+</details>
+
+<details>
+<summary><strong>Can I use OpenAI / Gemini / Ollama instead?</strong></summary>
+
+Not yet — multi-LLM support is on the roadmap. The architecture is designed for easy LLM swapping via the `llm_client.py` abstraction layer.
+
+</details>
+
+<details>
+<summary><strong>How large can uploaded PDFs be?</strong></summary>
+
+Up to **20 MB** per file. The system supports PDF and Excel (`.xlsx`) formats. Scanned PDFs are handled via OCR fallback.
+
+</details>
+
+<details>
+<summary><strong>Does it work offline?</strong></summary>
+
+The embedding model and search (BM25 + FAISS) work fully offline. Only LLM generation (Q&A, quizzes, summaries) requires an internet connection to reach the Sarvam API.
+
+</details>
+
+<details>
+<summary><strong>How is the hierarchy generated?</strong></summary>
+
+The system uses heading detection (H1/H2/H3) from PyMuPDF parsing, supplemented by LLM-based classification to auto-generate a `Subject → Unit → Topic → Subtopic` hierarchy stored in SQLite.
+
+</details>
 
 <br/>
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%" />
 </div>
+
+## 📜 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+<br/>
 
 ## 👨‍💻 Author
 
