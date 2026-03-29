@@ -37,9 +37,15 @@ _seq_counter = 0
 
 
 def _target_workers() -> int:
-    # Adaptive policy based on backlog. Keeps at least MIN and caps at MAX.
+    """Scale workers with queue depth without collapsing to MIN when backlog is empty.
+
+    Previously: idle queue (q=0) mapped to MIN_WORKERS only, so the scaler cancelled
+    extra workers right after startup. Keep DEFAULT_WORKERS as the idle baseline.
+    """
     q = len(_pending)
-    return max(MIN_WORKERS, min(MAX_WORKERS, MIN_WORKERS + (q // 2)))
+    base = max(MIN_WORKERS, DEFAULT_WORKERS)
+    scaled = base + (q // 2)
+    return max(MIN_WORKERS, min(MAX_WORKERS, scaled))
 
 
 async def _worker_loop(worker_id: int):

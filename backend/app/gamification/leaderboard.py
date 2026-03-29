@@ -1,14 +1,28 @@
 """Leaderboard — daily ranking with cache and reset."""
 import logging
 from datetime import datetime, timezone
+from sqlalchemy import inspect
+
 from app.state import leaderboard_cache
-from app.database import SessionLocal, Leaderboard, User
+from app.database import SessionLocal, Leaderboard, User, engine
 
 logger = logging.getLogger(__name__)
 
 
+def _ensure_leaderboard_table() -> None:
+    """Create leaderboard table if missing (e.g. partial DB from interrupted create_all)."""
+    try:
+        insp = inspect(engine)
+        if not insp.has_table(Leaderboard.__tablename__):
+            Leaderboard.__table__.create(bind=engine, checkfirst=True)
+            logger.info("Created missing table: %s", Leaderboard.__tablename__)
+    except Exception:
+        logger.exception("ensure leaderboard table failed")
+
+
 def load_leaderboard_cache():
     """Load leaderboard from DB into cache on startup."""
+    _ensure_leaderboard_table()
     db = SessionLocal()
     try:
         entries = db.query(Leaderboard).all()

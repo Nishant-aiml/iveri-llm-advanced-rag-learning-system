@@ -175,6 +175,19 @@ def init_db():
         else:
             raise
 
+    # If create_all aborted mid-way, some tables (e.g. leaderboard) may be missing.
+    # Create any missing ORM tables without re-running conflicting index DDL on existing tables.
+    try:
+        from sqlalchemy import inspect
+
+        insp = inspect(engine)
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                table.create(bind=engine, checkfirst=True)
+                logger.info("Created missing table: %s", table.name)
+    except Exception:
+        logger.exception("Failed to create missing tables after init_db")
+
     # Lightweight SQLite migration for new columns (no Alembic in this repo).
     # Only adds columns if they don't exist yet.
     try:
