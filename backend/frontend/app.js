@@ -21,6 +21,7 @@ const STATE = {
     flashcards:  { doc_id: null, source_chunk_ids: [], previous_output: null },
     summary:     { doc_id: null, source_chunk_ids: [], previous_output: null },
   },
+  currentView: 'dashboard',
 };
 
 function getLlmVariant() {
@@ -295,8 +296,19 @@ if (fileInput) {
 async function uploadFilesMulti(files) {
   if (!files || !files.length) return;
 
+  // Show feedback in BOTH places:
+  // - Upload view (uploadFeedback/progressSection)
+  // - Library view (libUploadFeedback/libProgressSection), since multi-upload is now possible from Library.
   setUploadFeedback(`Uploading ${files.length} document(s)…`);
   setProgress(20, 'Uploading…');
+  const libFb = el('libUploadFeedback');
+  const libProg = el('libProgressSection');
+  const libFill = el('libProgressFill');
+  const libLbl = el('libProgressLabel');
+  if (libFb) { libFb.textContent = `Uploading ${files.length} document(s)…`; libFb.className = 'lib-upload-fb'; }
+  if (libProg) libProg.style.display = 'block';
+  if (libFill) libFill.style.width = '20%';
+  if (libLbl) libLbl.textContent = 'Uploading…';
 
   const fd = new FormData();
   // FastAPI endpoint accepts `files[]` (alias) for list[UploadFile].
@@ -321,19 +333,28 @@ async function uploadFilesMulti(files) {
       const fn = el('topbarFilename');
       if (fn) fn.textContent = STATE.docFilename;
       if (accepted.length > 1) {
-        setUploadFeedback(
-          `Queued ${accepted.length} docs (${rejected.length} rejected). Processing first…`
-        );
+        const msg = `Queued ${accepted.length} docs (${rejected.length} rejected). Processing first…`;
+        setUploadFeedback(msg);
+        if (libFb) { libFb.textContent = msg; libFb.className = 'lib-upload-fb'; }
       } else if (rejected.length) {
-        setUploadFeedback(`Processing (some rejected): ${rejected.length} rejected.`);
+        const msg = `Processing (some rejected): ${rejected.length} rejected.`;
+        setUploadFeedback(msg);
+        if (libFb) { libFb.textContent = msg; libFb.className = 'lib-upload-fb'; }
       }
     } else {
       throw new Error(rejected?.[0]?.error || 'No accepted files');
     }
 
+    // If user initiated upload from Library, refresh list immediately so "processing" rows appear without a full page refresh.
+    if (STATE.currentView === 'library') {
+      try { initLibrary(); } catch {}
+    }
+
     // Poll only the first doc so the progress bar remains meaningful.
     if (data.accepted?.[0]?.status === 'ready' || data.accepted_files?.[0]?.status === 'ready' ) {
       setProgress(100, 'Done!');
+      if (libFill) libFill.style.width = '100%';
+      if (libLbl) libLbl.textContent = 'Done!';
       setTimeout(onDocReady, 700);
     } else {
       pollStatus();
@@ -341,6 +362,8 @@ async function uploadFilesMulti(files) {
   } catch (e) {
     setUploadFeedback(e.message, true);
     s('progressSection', 'none');
+    if (libFb) { libFb.textContent = e.message; libFb.className = 'lib-upload-fb error'; }
+    if (libProg) libProg.style.display = 'none';
   }
 }
 
@@ -437,8 +460,10 @@ let _searchMode = 'keyword';
 let _suggestTimer = null;
 let _suggestActiveIndex = -1;
 let _suggestPointerDown = false; // prevents blur handler hiding dropdown during selection
+let _libraryRefreshTimer = null;
 
 function go(viewId) {
+  STATE.currentView = viewId;
   document.querySelectorAll('.nav-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === viewId);
   });
@@ -454,6 +479,12 @@ function go(viewId) {
   if (viewId === 'weakness')    initWeakness();
   if (viewId === 'library')     initLibrary();
   if (viewId === 'evaluation')  resetEvaluation();
+
+  // On mobile, auto-close the sidebar after navigating so the main content is visible again.
+  if (window.innerWidth <= 768) {
+    const sb = el('sidebar');
+    if (sb) sb.classList.remove('open');
+  }
 }
 
 function needsLoad(containerId) {
@@ -1407,15 +1438,16 @@ function renderWeakness(container, weak, allTopics, studyPlan, subjectSummary = 
 // ── LIBRARY ───────────────────────────────────────────────────
 async function initLibrary() {
   const container = el('libraryContent');
+  if (!container) return;
   container.innerHTML = skeletonBlocks(3);
 
-  // Load user's uploaded documents
+  // Load user's uploaded documents with live status/progress
   let userDocs = [];
   try {
     if (STATE.userId) {
-      const ud = await get(`documents/${encodeURIComponent(STATE.userId)}`);
+      const ud = await get(`status/user/${encodeURIComponent(STATE.userId)}`);
       userDocs = ud.documents || [];
-      console.log('[LIBRARY] Loaded', userDocs.length, 'user documents');
+      console.log('[LIBRARY] Loaded', userDocs.length, 'user documents (with status)');
     }
   } catch(e) { console.error('[LIBRARY] Failed to load documents:', e); }
 
@@ -1428,6 +1460,22 @@ async function initLibrary() {
 
   STATE._libraryHierarchy = hierarchy;
   renderLibrary(container, userDocs, hierarchy);
+
+  // Auto-refresh the library list every ~12s while any docs are still processing.
+  const hasProcessing = userDocs.some(d => d.status === 'processing' || d.status === 'partially_ready');
+  if (!hasProcessing) {
+    if (_libraryRefreshTimer) {
+      clearTimeout(_libraryRefreshTimer);
+      _libraryRefreshTimer = null;
+    }
+  } else if (!_libraryRefreshTimer && STATE.currentView === 'library') {
+    _libraryRefreshTimer = setTimeout(() => {
+      _libraryRefreshTimer = null;
+      if (STATE.currentView === 'library') {
+        initLibrary();
+      }
+    }, 12000);
+  }
 }
 
 function renderLibrary(container, userDocs, hierarchy) {
@@ -1443,7 +1491,7 @@ function renderLibrary(container, userDocs, hierarchy) {
         <strong>Upload New Document</strong>
         <span>Drag & drop or click to browse — PDF or Excel, up to 20 MB</span>
       </div>
-      <input type="file" id="libFileInput" accept=".pdf,.xlsx" hidden />
+      <input type="file" id="libFileInput" accept=".pdf,.xlsx" multiple hidden />
     </label>
     <div class="lib-upload-subject-row" id="libSubjectRow" style="display:none">
       <span class="lib-upload-subject-label">📁 Add to Subject Folder:</span>
@@ -1464,11 +1512,17 @@ function renderLibrary(container, userDocs, hierarchy) {
       const name = doc.filename || doc.doc_id;
       const date = doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '';
       const isActive = doc.doc_id === STATE.docId;
+      const pct = typeof doc.progress === 'number' ? Math.round(doc.progress) : null;
+      const stage = doc.processing_stage || doc.status || '';
       html += `<div class="lib-user-doc ${isActive ? 'lib-doc-active' : ''}">
         <div class="lib-doc-info">
           <span class="lib-doc-name">📑 ${esc(name)}</span>
           ${date ? `<span class="lib-doc-date">${date}</span>` : ''}
-          <span class="lib-doc-status status-${doc.status}">${doc.status}</span>
+          <span class="lib-doc-status status-${doc.status}">
+            ${doc.status}
+            ${pct !== null && doc.status !== 'ready' ? ` · ${pct}%` : ''}
+            ${stage && doc.status !== 'ready' ? ` · ${esc(stage)}` : ''}
+          </span>
           ${doc.queue_position !== null && doc.queue_position !== undefined
             ? `<span class="lib-doc-queue"> · Queue #${doc.queue_position} · ETA ${fmt(doc.estimated_wait)} jobs</span>`
             : ''}
@@ -1533,10 +1587,23 @@ function _wireLibraryUpload() {
   dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('drag-over'); });
   dropzone.addEventListener('drop', e => {
     e.preventDefault(); dropzone.classList.remove('drag-over');
-    if (e.dataTransfer.files[0]) { _showSubjectRow(e.dataTransfer.files[0]); }
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    if (files.length === 1) {
+      _showSubjectRow(files[0]);
+    } else {
+      // For multi-select in Library, reuse the global multi-upload pipeline.
+      uploadFilesMulti(files);
+    }
   });
   fileIn.addEventListener('change', e => {
-    if (e.target.files[0]) { _showSubjectRow(e.target.files[0]); }
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if (files.length === 1) {
+      _showSubjectRow(files[0]);
+    } else {
+      uploadFilesMulti(files);
+    }
   });
 }
 
