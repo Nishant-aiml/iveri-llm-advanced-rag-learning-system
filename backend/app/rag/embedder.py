@@ -9,8 +9,12 @@ import logging
 import asyncio
 import time
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING
+
 from app.config import EMBEDDING_MODEL_NAME, EMBED_BATCH_WINDOW_S
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +22,13 @@ _model: SentenceTransformer | None = None
 
 
 def get_model() -> SentenceTransformer:
+    """Load MiniLM lazily so importing this module does not pull torch (fast uvicorn bind on PaaS)."""
     global _model
     if _model is None:
+        from sentence_transformers import SentenceTransformer as ST
+
         logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME}")
-        _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        _model = ST(EMBEDDING_MODEL_NAME)
         logger.info("Embedding model loaded successfully")
     return _model
 

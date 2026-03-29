@@ -33,9 +33,9 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("✓ Database initialized")
 
-    # 2. Warm up embedding model (MiniLM)
-    warmup()
-    logger.info("✓ Embedding model warmed up")
+    # 2. Warm up embedding model in background (torch + MiniLM can take 60s+; blocks Render port check if awaited)
+    asyncio.create_task(asyncio.to_thread(warmup))
+    logger.info("✓ Embedding warmup started in background")
 
     # 3. Load leaderboard cache from DB
     load_leaderboard_cache()
