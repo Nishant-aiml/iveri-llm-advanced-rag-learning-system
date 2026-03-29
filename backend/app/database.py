@@ -164,7 +164,16 @@ class CourseNode(Base):
 
 def init_db():
     """Create all tables."""
-    Base.metadata.create_all(bind=engine)
+    # SQLite is strict about `CREATE INDEX` and may throw if the index already exists.
+    # Since Render restarts/rehydrates the same DB file on some deploys, make startup idempotent.
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        msg = str(e).lower()
+        if "already exists" in msg and "create index" in msg:
+            logger.warning("Ignoring SQLite index already-exists error during init_db: %s", e)
+        else:
+            raise
 
     # Lightweight SQLite migration for new columns (no Alembic in this repo).
     # Only adds columns if they don't exist yet.
