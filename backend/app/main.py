@@ -1,9 +1,11 @@
 """FastAPI main application — IVERI LLM Advanced RAG System entry point."""
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -21,6 +23,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+IS_PRODUCTION = (
+    os.getenv("APP_ENV", "").strip().lower() == "production"
+    or bool(os.getenv("RENDER"))
+)
 
 
 @asynccontextmanager
@@ -92,6 +98,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # No-cache middleware for static files (dev mode)
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -105,7 +112,9 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
             response.headers['Pragma'] = 'no-cache'
         return response
 
-app.add_middleware(NoCacheMiddleware)
+# Keep no-cache behavior only in local/dev; on Render/prod we want browser caching.
+if not IS_PRODUCTION:
+    app.add_middleware(NoCacheMiddleware)
 
 # API routes
 app.include_router(router, prefix="/api")
