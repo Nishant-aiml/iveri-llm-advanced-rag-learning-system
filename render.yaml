@@ -7,9 +7,9 @@ services:
     rootDir: backend
     # Python minor version is NOT only in the UI; use backend/.python-version and/or PYTHON_VERSION below.
     # PyMuPDF wheels: use 3.11/3.12 — Render default for new services may be 3.14.x.
-    buildCommand: python -V && pip install --upgrade pip && pip install -r requirements.txt
-    # Render runs the start command in a shell; bind 0.0.0.0 and use $PORT from the platform.
-    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: if [ -d backend ]; then cd backend; fi; python -V && pip install --upgrade pip && pip install -r requirements.txt
+    # Run from either repo root or backend root to avoid module-path startup failures.
+    startCommand: if [ -d backend ]; then cd backend; fi; python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.6"
