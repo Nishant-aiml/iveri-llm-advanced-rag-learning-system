@@ -5,7 +5,9 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    # Python minor version is NOT in the “Python 3” runtime dropdown. Use backend/.python-version
+    # and/or PYTHON_VERSION below (overrides file). PyMuPDF needs 3.11/3.12 — Render’s default is 3.14.x.
+    buildCommand: python -V && pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
