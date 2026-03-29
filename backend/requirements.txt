@@ -10,3 +10,4 @@ python-dotenv==1.0.0
 httpx==0.25.2
 aiofiles==23.2.1
 openpyxl==3.1.2
+nltk
