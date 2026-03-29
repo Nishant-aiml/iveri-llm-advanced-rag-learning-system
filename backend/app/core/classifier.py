@@ -31,10 +31,22 @@ _GENERIC_SUBJECTS = {
 
 _SUBJECT_KEYWORDS: dict[str, list[str]] = {
     "Machine Learning": ["machine learning", "supervised", "unsupervised", "regression", "classification", "overfitting", "neural network"],
+    "Python": ["python", "pip", "numpy", "pandas", "def ", "list comprehension", "tuple", "dictionary", "django", "flask"],
+    "Computer Programming": ["programming", "algorithm", "java", "c++", "javascript", "function", "variable", "loop", "compiler"],
     "Data Structures": ["array", "linked list", "stack", "queue", "tree", "graph", "sorting", "hash table"],
     "Operating Systems": ["process", "thread", "scheduler", "kernel", "paging", "deadlock", "semaphore", "ipc"],
     "Database Systems": ["sql", "database", "query", "normalization", "transaction", "indexing", "join", "acid"],
-    "Artificial Intelligence": ["artificial intelligence", "intelligent agent", "knowledge representation", "search", "planning", "inference", "heuristic"],
+    "Artificial Intelligence": [
+        "artificial intelligence",
+        "intelligent agent",
+        "knowledge representation",
+        "expert system",
+        "search",
+        "planning",
+        "inference",
+        "heuristic",
+        "logic programming",
+    ],
     "Aerospace Engineering": ["aerospace", "propulsion", "thrust", "turbine", "compressor", "rocket", "nozzle", "jet engine"],
     "Computer Networks": ["tcp", "udp", "ip", "routing", "network", "protocol", "osi", "dns", "http"],
 }
@@ -178,13 +190,31 @@ def _sanitize_subject(subject: str) -> str:
         return "General"
 
     lowered = s.lower()
+    canonical = {
+        "ai": "AI",
+        "artificial intelligence": "AI",
+        "artificial-intelligence": "AI",
+        "ml": "Machine Learning",
+        "machine learning": "Machine Learning",
+        "python": "Python",
+        "python programming": "Python",
+        "computer programming": "Computer Programming",
+    }
+    if lowered in canonical:
+        return canonical[lowered]
+
     if lowered in _GENERIC_SUBJECTS:
         return "General"
 
     if len(s.split()) > 4:
         return "General"
 
-    return s.title()
+    normalized = s.title()
+    if normalized == "Artificial Intelligence":
+        return "AI"
+    if normalized == "Python Programming":
+        return "Python"
+    return normalized
 
 
 def _keyword_fallback_subject(text: str) -> str:
@@ -231,6 +261,35 @@ def _keyword_score_subject(text: str) -> tuple[str, int, dict[str, int]]:
                 s += t.count(kw) * 2
             else:
                 s += len(re.findall(rf"\b{re.escape(kw)}\b", t))
+        # Strong disambiguation for common AI-vs-ML confusion.
+        if subject == "Artificial Intelligence":
+            if re.search(r"\bartificial intelligence\b", t):
+                s += 6
+            if re.search(r"\bai\b", t):
+                s += 4
+            if re.search(r"\bintelligent agents?\b", t):
+                s += 3
+            if re.search(r"\bmachine learning\b", t):
+                s -= 1
+        elif subject == "Machine Learning":
+            if re.search(r"\bmachine learning\b", t):
+                s += 4
+            if re.search(r"\bml\b", t):
+                s += 2
+            if re.search(r"\bartificial intelligence\b", t):
+                s -= 1
+        elif subject == "Python":
+            if re.search(r"\bpython\b", t):
+                s += 6
+            if re.search(r"\bpython programming\b", t):
+                s += 6
+            if re.search(r"\bdef\s+[a-zA-Z_]\w*\s*\(", t):
+                s += 2
+        elif subject == "Computer Programming":
+            if re.search(r"\bcomputer programming\b", t):
+                s += 5
+            if re.search(r"\bpython\b", t):
+                s -= 2
         scores[subject] = s
         if s > best_score:
             best_subject = subject
