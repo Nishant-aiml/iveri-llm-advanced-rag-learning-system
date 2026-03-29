@@ -14,7 +14,7 @@ const STATE = {
   currentQuizMeta: null,
   _flashcards: [], _fcIdx: 0,
   /** Sarvam chat: "105b" | "30b" — persisted under `iveri_llm` */
-  llmVariant:  localStorage.getItem('iveri_llm') === '30b' ? '30b' : '105b',
+  llmVariant:  localStorage.getItem('iveri_llm') === '105b' ? '105b' : '30b',
   refreshBundle: {
     quiz:        { doc_id: null, source_chunk_ids: [], previous_output: null },
     mock_test:   { doc_id: null, source_chunk_ids: [], previous_output: null },

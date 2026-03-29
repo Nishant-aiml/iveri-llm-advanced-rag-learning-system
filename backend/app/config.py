@@ -35,7 +35,7 @@ LLM_REFRESH_TEMPERATURE = float(os.getenv("LLM_REFRESH_TEMPERATURE", "0.4"))
 
 def normalize_llm_variant(raw: str | None) -> str:
     """Normalize client `llm_variant` to ``105b`` or ``30b``."""
-    v = (raw or "105b").strip().lower().replace(" ", "")
+    v = (raw or "30b").strip().lower().replace(" ", "")
     if v in ("30b", "30", "sarvam-30b", "sarvam30b", "small", "fast"):
         return "30b"
     return "105b"
