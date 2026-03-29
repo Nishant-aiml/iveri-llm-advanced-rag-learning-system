@@ -99,6 +99,10 @@ RATE_LIMIT_GAP_SECONDS = 0.5
 
 # --- Ingestion queue / batching ---
 MAX_INGEST_QUEUE_SIZE = 30
+# Worker counts (lower on small PaaS instances to avoid OOM / startup failures)
+PIPELINE_MIN_WORKERS = int(os.getenv("PIPELINE_MIN_WORKERS", "1"))
+PIPELINE_DEFAULT_WORKERS = int(os.getenv("PIPELINE_DEFAULT_WORKERS", "3"))
+PIPELINE_MAX_WORKERS = int(os.getenv("PIPELINE_MAX_WORKERS", "12"))
 # Embedding micro-batching window (30–50ms target)
 EMBED_BATCH_WINDOW_S = 0.05
 

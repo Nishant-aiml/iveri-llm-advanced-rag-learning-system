@@ -37,9 +37,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(asyncio.to_thread(warmup))
     logger.info("✓ Embedding warmup started in background")
 
-    # 3. Load leaderboard cache from DB
-    load_leaderboard_cache()
-    logger.info("✓ Leaderboard cache loaded")
+    # 3. Load leaderboard cache from DB (non-fatal: empty cache on failure)
+    try:
+        load_leaderboard_cache()
+        logger.info("✓ Leaderboard cache loaded")
+    except Exception:
+        logger.exception("Leaderboard cache load failed; continuing with empty cache")
 
     # 4. Load content library catalog
     try:
@@ -53,9 +56,12 @@ async def lifespan(app: FastAPI):
     flush_task = asyncio.create_task(flush_pending_updates())
     logger.info("✓ Background flush task started")
 
-    # 6. Start ingestion queue worker pool
-    await start_pipeline_pool()
-    logger.info("✓ Ingestion worker pool started")
+    # 6. Start ingestion queue worker pool (non-fatal: API still up; uploads may queue)
+    try:
+        await start_pipeline_pool()
+        logger.info("✓ Ingestion worker pool started")
+    except Exception:
+        logger.exception("Ingestion worker pool failed to start; continuing without background workers")
 
     logger.info("=" * 60)
     logger.info("System READY — Advanced RAG pipeline operational")

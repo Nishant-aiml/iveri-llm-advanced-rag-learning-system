@@ -10,13 +10,18 @@ from app.tasks.background import process_document_pipeline
 
 import os
 
-from app.config import MAX_INGEST_QUEUE_SIZE
+from app.config import (
+    MAX_INGEST_QUEUE_SIZE,
+    PIPELINE_MIN_WORKERS,
+    PIPELINE_DEFAULT_WORKERS,
+    PIPELINE_MAX_WORKERS,
+)
 
 logger = logging.getLogger(__name__)
 
-MIN_WORKERS = 5
-DEFAULT_WORKERS = 10
-MAX_WORKERS = 15
+MIN_WORKERS = max(1, PIPELINE_MIN_WORKERS)
+DEFAULT_WORKERS = max(MIN_WORKERS, PIPELINE_DEFAULT_WORKERS)
+MAX_WORKERS = max(DEFAULT_WORKERS, PIPELINE_MAX_WORKERS)
 
 # PriorityQueue item: (priority, seq, doc_id)
 # Lower `priority` gets processed first.
@@ -92,9 +97,13 @@ async def start_pipeline_pool(default_workers: int = DEFAULT_WORKERS):
     if _running:
         return
     _running = True
-    await _ensure_worker_count(default_workers)
-    _scaler_task = asyncio.create_task(_scaler_loop())
-    logger.info("[queue] started with workers=%s", len(_workers))
+    try:
+        await _ensure_worker_count(default_workers)
+        _scaler_task = asyncio.create_task(_scaler_loop())
+        logger.info("[queue] started with workers=%s", len(_workers))
+    except Exception:
+        _running = False
+        raise
 
 
 async def stop_pipeline_pool():
