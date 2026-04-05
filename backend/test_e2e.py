@@ -195,11 +195,11 @@ def main():
     ]
     for q, should_have_answer in questions:
         t = time.time()
-        r = c.post(f"{BASE}/ask", json={"doc_id": DOC_ID, "question": q, "user_id": USER})
+        r = c.post(f"{BASE}/ask", json={"query": q, "user_id": USER})
         lat = time.time() - t
         d = r.json()
         has_answer = d.get("answer") and len(d["answer"]) > 10
-        has_sources = "source_chunks" in d
+        has_sources = ("source_chunks" in d) or ("sources" in d)
 
         test(f"Ask: '{q[:40]}...' responds", r.status_code == 200, latency=lat)
         test(f"  Response < 15 sec", lat < 15, f"{lat:.1f}s", latency=lat)
@@ -209,14 +209,14 @@ def main():
 
     # Test cache: repeat same question
     t = time.time()
-    r = c.post(f"{BASE}/ask", json={"doc_id": DOC_ID, "question": "What is AI?", "user_id": USER})
+    r = c.post(f"{BASE}/ask", json={"query": "What is AI?", "user_id": USER})
     lat = time.time() - t
     d = r.json()
     test("Cached response is fast", lat < 3, f"{lat:.1f}s", latency=lat)
     test("Cached flag present", "cached" in d, str(d.keys()))
 
     # Test empty query
-    r = c.post(f"{BASE}/ask", json={"doc_id": DOC_ID, "question": "", "user_id": USER})
+    r = c.post(f"{BASE}/ask", json={"query": "", "user_id": USER})
     test("Empty query handled", r.status_code == 400, f"status={r.status_code}")
 
     # ==========================================
@@ -345,8 +345,11 @@ def main():
     # 16. NONEXISTENT DOC HANDLING
     # ==========================================
     print("\n[16] ERROR HANDLING")
-    r = c.post(f"{BASE}/ask", json={"doc_id": "fake_doc_xyz", "question": "test", "user_id": USER})
-    test("Nonexistent doc → 404", r.status_code == 404, f"status={r.status_code}")
+    r = c.post(f"{BASE}/ask", json={"query": "zzzz_nonexistent_topic_xyz", "user_id": USER})
+    test("Off-topic ask returns 200", r.status_code == 200, f"status={r.status_code}")
+    if r.status_code == 200:
+        ans = (r.json() or {}).get("answer") or ""
+        test("Off-topic answer empty or not-found", ("not found" in ans.lower()) or len(ans) < 400, ans[:120])
 
     r = c.get(f"{BASE}/status/fake_doc_xyz")
     test("Nonexistent status → 404", r.status_code == 404)

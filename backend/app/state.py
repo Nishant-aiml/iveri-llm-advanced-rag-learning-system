@@ -34,6 +34,10 @@ generated_cache: dict = {}
 # LLM response cache  {(doc_id, task_type, context_hash, prompt_version): response}
 llm_cache: dict = {}
 
+# User-library /ask cache: sha256 key -> last response payload (LRU via OrderedDict)
+user_ask_cache: OrderedDict = OrderedDict()
+MAX_USER_ASK_CACHE = 500
+
 # User XP cache  {user_id: {"xp": int, "daily_xp": int, "level": int, ...}}
 user_xp_cache: dict = {}
 

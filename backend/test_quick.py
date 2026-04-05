@@ -34,13 +34,13 @@ print(f"\nFinal status: {d['status']}")
 if d["status"] == "ready":
     print("\n=== ASK AI ===")
     t = time.time()
-    r = c.post(f"{BASE}/ask", json={"doc_id": doc_id, "question": "What is artificial intelligence?", "user_id": "test_user"})
+    r = c.post(f"{BASE}/ask", json={"query": "What is artificial intelligence?", "user_id": "test_user"})
     lat = time.time() - t
     data = r.json()
     print(f"Status: {r.status_code}, Latency: {lat:.1f}s")
     ans = data.get("answer", "")
     print(f"Answer: {ans[:300]}")
-    print(f"Sources: {len(data.get('source_chunks', []))} chunks")
+    print(f"Sources: {len(data.get('sources') or data.get('source_chunks') or [])} chunks")
     print(f"Cached: {data.get('cached')}")
 
     print("\n=== QUIZ START ===")

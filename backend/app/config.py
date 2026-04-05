@@ -62,6 +62,7 @@ LLM_MAX_TOKENS_BY_TASK = {
     "rapid_fire": 4096,
     "true_false": 4096,
     "fill_blanks": 8192,
+    "ask_user_library": int(os.getenv("LLM_MAX_TOKENS_ASK_USER_LIB", "4096")),
 }
 # Strict AI pipeline: hybrid → top-K chunks → dedupe/MMR → LLM
 AI_RETRIEVAL_MAX_CHUNKS = int(os.getenv("AI_RETRIEVAL_MAX_CHUNKS", "5"))

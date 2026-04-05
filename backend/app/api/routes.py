@@ -65,6 +65,8 @@ from app.chunking.validator import validate_chunks
 
 # Existing imports (still used)
 from app.rag.llm_client import call_llm
+from app.rag.user_ask import ask_ai as ask_user_library_ai
+from app.config import normalize_llm_variant as norm_llm_variant
 from app.rag.embedder import get_model
 from app.indexing.vector_index import delete_vector_index
 from app.indexing.bm25_index import delete_bm25_index
@@ -83,9 +85,11 @@ router = APIRouter()
 # --- Request/Response Models ---
 
 class AskRequest(BaseModel):
-    doc_id: str
-    question: str
+    """AI Ask over the user’s entire PDF library (retrieval-first RAG)."""
     user_id: str = "default_user"
+    query: str = ""
+    question: str = ""  # alias for query (backward compatible)
+    doc_id: Optional[str] = None  # optional: restrict search to one doc
     stream: bool = False
     llm_variant: Optional[str] = "105b"  # "105b" | "30b"
 
@@ -903,61 +907,29 @@ async def retry_document(doc_id: str):
 
 @router.post("/ask")
 async def ask_question(req: AskRequest):
-    """RAG Q&A — hybrid retrieval + confidence + latency tracking."""
-    start = time.time()
-    timings = {}
-    _log_request("/ask", req.doc_id, req.question)
-    _validate_doc_ready(req.doc_id)
-    await _ensure_doc_assets_ready(req.doc_id)
+    """RAG Q&A across the user’s entire document library (hybrid retrieval → optional LLM)."""
+    text = (req.query or req.question or "").strip()
+    _log_request("/ask", req.doc_id or "all_user_docs", text)
+    if not text:
+        raise HTTPException(400, "Provide `query` or `question`")
 
-    clean_q = sanitize_query(req.question)
-    if not clean_q:
-        raise HTTPException(400, "Invalid or empty query")
+    llm_v = norm_llm_variant(req.llm_variant or "105b")
 
-    # Hybrid retrieval (FAISS + BM25 + RRF)
-    t0 = time.time()
-    chunks = await retrieve_for_task(req.doc_id, clean_q, task_type="ask")
-    timings["retrieval_ms"] = round((time.time() - t0) * 1000, 1)
-
-    # MMR diversity filter
-    t0 = time.time()
-    chunks = mmr_filter(chunks, max_chunks=5)
-    timings["mmr_ms"] = round((time.time() - t0) * 1000, 1)
-
-    # Context filter (token-safe)
-    t0 = time.time()
-    chunks = filter_context(chunks, max_tokens=1500)
-    timings["context_filter_ms"] = round((time.time() - t0) * 1000, 1)
-
-    if not chunks:
-        return {"answer": FALLBACK_RESPONSE, "source_chunks": [], "confidence": {"level": "low", "score": 0}, "cached": False, "timings": timings}
-
-    # Confidence check (with reranker score if available)
-    scores = [c.get("rrf_score", c.get("score", 0)) for c in chunks]
-    reranker_score = max((c.get("rerank_score", 0) for c in chunks), default=0)
-    confidence = compute_confidence(scores, reranker_score=reranker_score, num_chunks=len(chunks))
-
-    if should_fallback(confidence):
-        return {"answer": FALLBACK_RESPONSE, "sources": [], "confidence": confidence, "cached": False, "timings": timings}
-
-    context = "\n\n".join(c["text"] for c in chunks)
-    prompt = get_prompt("ask")
-
-    t0 = time.time()
-    result = await call_llm(
-        req.doc_id, "ask", prompt, f"{context}\n\nQuestion: {clean_q}", llm_variant=req.llm_variant
+    result = await ask_user_library_ai(
+        text,
+        req.user_id,
+        scope_doc_id=req.doc_id,
+        llm_variant=llm_v,
+        use_cache=True,
     )
-    timings["llm_ms"] = round((time.time() - t0) * 1000, 1)
-
-    # Source citations
-    sources = build_source_citations(chunks)
-    result["source_chunks"] = sources
-    result["confidence"] = confidence
-    result["timings"] = timings
     await add_xp(req.user_id, "ask")
 
-    latency = round(time.time() - start, 3)
-    logger.info(f"/ask latency: {latency}s | confidence: {confidence['level']} | timings: {timings}")
+    cd = result.get("confidence_detail")
+    label = result.get("confidence")
+    if isinstance(label, str):
+        result["confidence_label"] = label
+    result["confidence"] = cd if isinstance(cd, dict) else {"level": str(label or "medium"), "score": 0.5}
+    logger.info("/ask user=%s cached=%s", req.user_id, result.get("cached"))
     return result
 
 

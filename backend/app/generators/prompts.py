@@ -76,6 +76,25 @@ CRITICAL ANTI-HALLUCINATION RULES:
 Context from document:
 {{context}}"""
 
+# User’s entire library (multi-PDF) — strict JSON; context is assembled in user_ask.py
+USER_LIBRARY_ASK_PROMPT = f"""You MUST answer ONLY using the provided context excerpts from the user’s documents.
+Do NOT use outside knowledge or guess.
+
+If the answer is not present in the context, respond with JSON exactly:
+{{"answer": "Not found in your documents", "sources": [], "confidence": "low"}}
+
+Otherwise respond with ONLY valid JSON (no markdown fences, no extra text):
+{{
+  "answer": "<clear, concise answer>",
+  "sources": [
+    {{"chunk_id": "<id>", "doc_id": "<doc_id>", "page": <int>, "section": "<section title>"}}
+  ],
+  "confidence": "high" | "medium" | "low"
+}}
+
+Use chunk_id / doc_id / page / section from the chunk headers in the user message when possible.
+Prompt version: {PROMPT_VERSION}."""
+
 QUIZ_PROMPT = f"""{BASE_CONSTRAINT}
 
 You are a quiz generator (prompt {PROMPT_VERSION}).
@@ -255,6 +274,7 @@ def get_prompt(task_type: str) -> str:
     """Return the appropriate prompt template for a task type."""
     prompts = {
         "ask": ASK_PROMPT,
+        "ask_user_library": USER_LIBRARY_ASK_PROMPT,
         "mentor": MENTOR_PROMPT,
         "quiz": QUIZ_PROMPT,
         "flashcards": FLASHCARD_PROMPT,

@@ -500,7 +500,7 @@ function toggleSidebar() {
 async function sendMsg() {
   const input = el('chatInput');
   const q = input.value.trim();
-  if (!q || !STATE.docId) return;
+  if (!q || !STATE.userId) return;
   input.value = '';
 
   appendMsg('user', q);
@@ -508,13 +508,24 @@ async function sendMsg() {
   appendMsg('ai', `<span class="btn-spinner btn-spinner-dark"></span>`, aiId);
 
   try {
-    const d = await api('ask', { doc_id:STATE.docId, question:q, user_id:STATE.userId });
-    const sources = (d.source_chunks||[])
-      .map(c=>c.section.replace(/\*\*/g,''))
-      .filter(s=>s.length>2);
-    const srcHtml = sources.length
-      ? `<div class="msg-sources">${[...new Set(sources)].map(s=>`<span class="source-chip">📎 ${s}</span>`).join('')}</div>`
+    const d = await api('ask', {
+      query: q,
+      user_id: STATE.userId,
+      llm_variant: getLlmVariant(),
+    });
+    const srcList = d.sources || d.source_chunks || [];
+    const conf = d.confidence_label || (d.confidence && d.confidence.level) || '';
+    const confHtml = conf
+      ? `<span class="source-chip conf-chip" title="Confidence">${esc(conf)}</span>`
       : '';
+    const srcHtml = srcList.length
+      ? `<div class="msg-sources">${confHtml}${srcList.map(function(c) {
+          var sec = (c.section || c.preview || '').replace(/\*\*/g, '');
+          var doc = c.doc_id ? ' · ' + String(c.doc_id).slice(0, 14) : '';
+          var label = (sec || 'Source') + doc;
+          return `<span class="source-chip">📎 ${esc(label)}</span>`;
+        }).join('')}</div>`
+      : (confHtml ? `<div class="msg-sources">${confHtml}</div>` : '');
     updateMsg(aiId, renderMd(d.answer) + srcHtml);
     fetchScore();
   } catch(e) {
