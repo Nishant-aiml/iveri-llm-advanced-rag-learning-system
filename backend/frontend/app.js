@@ -12,6 +12,8 @@ const STATE = {
   xp: 0, level: 1, streak: 0,
   currentQuiz: null,
   currentQuizMeta: null,
+  quizByKey: { quiz: [], mock: [] },
+  quizAnswers: { quiz: {}, mock: {} },
   _flashcards: [], _fcIdx: 0,
   /** Sarvam chat: "105b" | "30b" — persisted under `iveri_llm` */
   llmVariant:  localStorage.getItem('iveri_llm') === '105b' ? '105b' : '30b',
@@ -21,6 +23,8 @@ const STATE = {
     flashcards:  { doc_id: null, source_chunk_ids: [], previous_output: null },
     summary:     { doc_id: null, source_chunk_ids: [], previous_output: null },
   },
+  lastAskTopic: '',
+  lastAskQuery: '',
   currentView: 'dashboard',
 };
 
@@ -499,8 +503,17 @@ function toggleSidebar() {
 // ── ASK AI ───────────────────────────────────────────────────
 async function sendMsg() {
   const input = el('chatInput');
-  const q = input.value.trim();
+  const qRaw = input.value.trim();
+  let q = qRaw;
   if (!q || !STATE.userId) return;
+  const isExplainFollowup = /^(?:pls|please)?\s*(?:can you\s*)?(?:explain|simplify|describe|rephrase)(?:\s+this|\s+it)?(?:\s+in\s+detail)?\s*$/i.test(qRaw);
+  if (isExplainFollowup) {
+    if (STATE.lastAskTopic) {
+      q = `Explain this topic from my documents in simple terms: ${STATE.lastAskTopic}`;
+    } else if (STATE.lastAskQuery) {
+      q = `Explain this from my documents in simple terms: ${STATE.lastAskQuery}`;
+    }
+  }
   input.value = '';
 
   appendMsg('user', q);
@@ -514,6 +527,9 @@ async function sendMsg() {
       llm_variant: getLlmVariant(),
     });
     const srcList = d.sources || d.source_chunks || [];
+    const firstTopic = (srcList[0]?.section || '').replace(/\*\*/g, '').trim();
+    if (firstTopic) STATE.lastAskTopic = firstTopic;
+    STATE.lastAskQuery = q;
     const conf = d.confidence_label || (d.confidence && d.confidence.level) || '';
     const confHtml = conf
       ? `<span class="source-chip conf-chip" title="Confidence">${esc(conf)}</span>`
@@ -521,8 +537,7 @@ async function sendMsg() {
     const srcHtml = srcList.length
       ? `<div class="msg-sources">${confHtml}${srcList.map(function(c) {
           var sec = (c.section || c.preview || '').replace(/\*\*/g, '');
-          var doc = c.doc_id ? ' · ' + String(c.doc_id).slice(0, 14) : '';
-          var label = (sec || 'Source') + doc;
+          var label = (sec || 'Source');
           return `<span class="source-chip">📎 ${esc(label)}</span>`;
         }).join('')}</div>`
       : (confHtml ? `<div class="msg-sources">${confHtml}</div>` : '');
@@ -576,6 +591,8 @@ async function loadQuizType(type, containerId, opts = {}) {
     const d = await api('quiz/start', body);
     STATE.currentQuiz = d.questions;
     const quizKey = type === 'mock_test' ? 'mock' : 'quiz';
+    STATE.quizByKey[quizKey] = d.questions || [];
+    STATE.quizAnswers[quizKey] = {};
     STATE.currentQuizMeta = { containerId, quizKey };
     captureFeatureContext(type, d);
     try {
@@ -599,8 +616,9 @@ function renderQuiz(questions, isMock=false, quizKey='quiz') {
     const qText = q.question || q.q || '';
     const qDiff = q.difficulty || 'easy';
     const qOpts = q.options || [];
+    const qid = String(q.question_id || q.id || `q_${i}`);
     return `
-    <div class="q-card" id="qc_${i}">
+    <div class="q-card" id="qc_${quizKey}_${i}">
       <div class="q-card-header">
         <div>
           <div class="q-text">${i+1}. ${esc(qText)}</div>
@@ -610,7 +628,7 @@ function renderQuiz(questions, isMock=false, quizKey='quiz') {
       </div>
       <div class="q-options">
         ${qOpts.slice(0,4).map((opt,j) => `
-          <div class="q-option" id="opt_${quizKey}_${i}_${j}" onclick="selectOpt('${quizKey}',${i},${j})">
+          <div class="q-option" id="opt_${quizKey}_${i}_${j}" data-qid="${esc(qid)}" onclick="selectOpt('${quizKey}',${i},${j})">
             <input type="radio" name="q_${quizKey}_${i}" value="${letters[j]}" />${letters[j]}. ${esc(
               String(opt || '').replace(/^[A-D][\)\.\:\-]\s*/i,'')
             )}
@@ -628,22 +646,32 @@ function renderQuiz(questions, isMock=false, quizKey='quiz') {
 }
 
 function selectOpt(quizKey, qi, oi) {
-  // clear selected visualson for this question
+  // Clear selected visuals for this question.
   document.querySelectorAll(`[id^="opt_${quizKey}_${qi}_"]`).forEach(d => d.classList.remove('selected'));
-  el(`opt_${quizKey}_${qi}_${oi}`).classList.add('selected');
-  el(`qc_${qi}`).querySelector('input:checked') && null;
-  // Also check radio
-  const radio = el(`opt_${quizKey}_${qi}_${oi}`).querySelector('input');
-  if (radio) { radio.checked = true; }
+  const opt = el(`opt_${quizKey}_${qi}_${oi}`);
+  if (!opt) return;
+  opt.classList.add('selected');
+  const radio = opt.querySelector('input');
+  if (radio) radio.checked = true;
+  const qid = opt.dataset.qid || `q_${qi}`;
+  const selectedValue = (radio?.value || '').trim();
+  STATE.quizAnswers[quizKey] = STATE.quizAnswers[quizKey] || {};
+  STATE.quizAnswers[quizKey][qid] = selectedValue;
 }
 
 async function submitQuiz(containerId, quizKey='quiz') {
-  if (!STATE.currentQuiz?.length) return;
+  const questions = (STATE.quizByKey && STATE.quizByKey[quizKey]) || STATE.currentQuiz || [];
+  if (!questions.length) return;
   const container = el(containerId);
-  const answers = STATE.currentQuiz.map((_,i) => {
-    const selected = container?.querySelector(`[id^="opt_${quizKey}_${i}_"].selected`);
-    return selected ? selected.querySelector('input')?.value || '' : '';
+  const selectedByQid = STATE.quizAnswers[quizKey] || {};
+  const answers = questions.map((q, i) => {
+    const qid = String(q.question_id || q.id || `q_${i}`);
+    const fromState = (selectedByQid[qid] || '').trim();
+    if (fromState) return fromState;
+    const selected = container?.querySelector(`[id^="opt_${quizKey}_${i}_"].selected input`);
+    return (selected?.value || '').trim();
   });
+  console.log('[QUIZ SUBMIT]', quizKey, { answers });
   if (answers.some(a => !a)) {
     alert('Please select an option for all questions before submitting.');
     return;
@@ -653,13 +681,13 @@ async function submitQuiz(containerId, quizKey='quiz') {
     const quizType = containerId === 'mocktestContent' ? 'mock_test' : 'quiz';
     const d = await api('quiz/submit', {
       doc_id: STATE.docId, user_id: STATE.userId,
-      questions: STATE.currentQuiz, answers,
+      questions, answers,
       quiz_type: quizType,
     });
 
     // details array from evaluate_quiz
     const evals = d.details || d.evaluations || [];
-    STATE.currentQuiz.forEach((q,i) => {
+    questions.forEach((q,i) => {
       const res = evals[i] || {};
       const correctAns = (q.correct_answer || res.correct_answer || '').trim().toUpperCase();
       container.querySelectorAll(`[id^="opt_${quizKey}_${i}_"]`).forEach(div => {

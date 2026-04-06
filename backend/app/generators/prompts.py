@@ -79,6 +79,8 @@ Context from document:
 # User’s entire library (multi-PDF) — strict JSON; context is assembled in user_ask.py
 USER_LIBRARY_ASK_PROMPT = f"""You MUST answer ONLY using the provided context excerpts from the user’s documents.
 Do NOT use outside knowledge or guess.
+If the context is unrelated to the question, you MUST return not-found JSON.
+You MAY explain, simplify, and rephrase as long as the meaning stays grounded in the context.
 
 If the answer is not present in the context, respond with JSON exactly:
 {{"answer": "Not found in your documents", "sources": [], "confidence": "low"}}

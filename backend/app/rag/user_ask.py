@@ -10,22 +10,25 @@ import logging
 import re
 import time
 from collections import defaultdict
+from difflib import SequenceMatcher
 from typing import Any
 
 from app.config import PROMPT_VERSION
 from app.database import SessionLocal, Document
 from app.generators.prompts import get_prompt
 from app.llm.trust import build_source_citations, compute_confidence
-from app.query.expander import sanitize_query
+from app.query.expander import sanitize_query, expand_query
 from app.rag.llm_client import call_llm
 from app.retrieval.context_filter import filter_context
-from app.retrieval.hybrid import retrieve_for_task
+from app.retrieval.hybrid import hybrid_retrieve
 from app.retrieval.mmr import mmr_filter
+from app.reranker.llm_reranker import rerank_chunks
 from app.state import MAX_USER_ASK_CACHE, user_ask_cache, touch_doc
 
 logger = logging.getLogger(__name__)
 
 NOT_FOUND = "Not found in your documents"
+NO_RELEVANT = "No relevant content found in your documents"
 
 
 def _put_user_ask_cache(key: str, payload: dict) -> None:
@@ -37,13 +40,123 @@ def _put_user_ask_cache(key: str, payload: dict) -> None:
 # RRF scores are typically small (e.g. 0.01–0.15); below this, treat as no match.
 MIN_TOP_RRF = 0.008
 EXTRACTIVE_RRF = 0.06
-MAX_CONTEXT_TOKENS = 1100
-MERGE_POOL = 28
-MMR_MAX = 7
+MAX_CONTEXT_TOKENS = 800
+MERGE_POOL = 20
+MMR_MAX = 3
+TOP_RELEVANCE_GATE = 0.55
+NOISE_WORDS = {
+    "a", "an", "the", "is", "are", "am", "was", "were", "be", "being", "been",
+    "what", "who", "when", "where", "why", "how", "please", "explain", "define",
+    "of", "for", "to", "in", "on", "at", "with", "about", "from", "by",
+    "this", "that", "it",
+}
+
+
+def _query_type(query: str) -> str:
+    q = query.strip().lower()
+    if q.startswith("what is") or q.startswith("define"):
+        return "definition"
+    if any(x in q for x in ("explain", "simplify", "describe", "rephrase")):
+        return "explanation"
+    return "general"
+
+
+def _keywords(query: str) -> list[str]:
+    q = query.lower()
+    toks = re.findall(r"[a-z0-9\+\#]{2,}", q)
+    return [t for t in toks if t not in NOISE_WORDS]
 
 
 def normalize_query(raw: str) -> str | None:
-    return sanitize_query(raw)
+    cleaned = sanitize_query(raw)
+    if not cleaned:
+        return None
+    lowered = cleaned.lower().strip()
+    keys = _keywords(lowered)
+    # Keep intent words in surface query, append concise keyword bag.
+    if keys:
+        return f"{lowered} | keywords: {' '.join(keys[:8])}"
+    return lowered
+
+
+def is_valid_query(raw: str) -> bool:
+    q = (raw or "").strip()
+    if len(q) < 3:
+        return False
+    # Block single/random letters like "s", "aa", "xq".
+    letters_only = re.sub(r"[^a-zA-Z]", "", q)
+    if letters_only and len(letters_only) <= 2:
+        return False
+    if re.fullmatch(r"[a-zA-Z]{1,2}", q):
+        return False
+    return True
+
+
+def _weight_for_query(query: str) -> tuple[float, float]:
+    if _query_type(query) == "explanation":
+        # Explanatory prompts can be broader; keep vector strong.
+        return 0.6, 0.4
+    word_count = len(re.findall(r"\w+", query))
+    if word_count <= 5:
+        return 0.3, 0.7  # vector, bm25
+    return 0.6, 0.4
+
+
+def _keyword_boost(chunk: dict, keywords: list[str]) -> float:
+    if not keywords:
+        return 0.0
+    text = f"{chunk.get('section', '')} {chunk.get('text', '')}".lower()
+    boost = 0.0
+    for k in keywords:
+        if re.search(rf"\b{re.escape(k)}\b", text):
+            boost += 0.04
+    return min(boost, 0.2)
+
+
+def _relevance_score(chunk: dict, keywords: list[str]) -> float:
+    base = float(chunk.get("rrf_score", chunk.get("score", 0)) or 0)
+    if not keywords:
+        return min(base * 20.0, 1.0)
+    text = f"{chunk.get('section', '')} {chunk.get('text', '')}".lower()
+    hits = 0
+    for k in keywords:
+        if re.search(rf"\b{re.escape(k)}\b", text):
+            hits += 1
+    overlap = hits / max(1, len(keywords))
+    # Scale RRF into [0,1]-ish and blend with lexical overlap.
+    base_norm = min(base * 20.0, 1.0)
+    return 0.65 * overlap + 0.35 * base_norm
+
+
+def _relevance_gate_for_query(query: str, has_keywords: bool) -> float:
+    qt = _query_type(query)
+    if qt == "explanation" and not has_keywords:
+        # "explain this" style prompts should be allowed when context is loosely related.
+        return 0.35
+    if qt == "explanation":
+        return 0.45
+    return TOP_RELEVANCE_GATE
+
+
+def _dedupe_chunks(chunks: list[dict], similarity_threshold: float = 0.9) -> list[dict]:
+    """Remove near-duplicate chunks by text similarity."""
+    out: list[dict] = []
+    for c in chunks:
+        text = (c.get("text", "") or "").strip()
+        if not text:
+            continue
+        is_dup = False
+        for prev in out:
+            prev_text = (prev.get("text", "") or "").strip()
+            if not prev_text:
+                continue
+            sim = SequenceMatcher(None, text, prev_text).ratio()
+            if sim >= similarity_threshold:
+                is_dup = True
+                break
+        if not is_dup:
+            out.append(c)
+    return out
 
 
 def _cache_key(user_id: str, normalized_q: str) -> str:
@@ -92,6 +205,22 @@ async def retrieve_context(user_id: str, query: str, scope_doc_id: str | None = 
         db.close()
 
     merged: list[dict] = []
+    qtype = _query_type(query)
+    query_for_retrieval = query.split("| keywords:")[0].strip()
+    keywords = _keywords(query_for_retrieval)
+    vector_w, bm25_w = _weight_for_query(query_for_retrieval)
+    # Query expansion helps short definition queries get exact topical context.
+    expanded = expand_query(query_for_retrieval, "analytical" if qtype == "explanation" else "factual")
+    # Deduplicate while preserving order.
+    expanded_queries = []
+    seen_q = set()
+    for qtxt, _w in expanded[:3]:
+        qk = qtxt.strip().lower()
+        if qk not in seen_q:
+            seen_q.add(qk)
+            expanded_queries.append(qtxt)
+    if query_for_retrieval not in seen_q:
+        expanded_queries.insert(0, query_for_retrieval)
     for d in docs:
         try:
             await _ensure_doc_assets_ready(d.doc_id)
@@ -100,22 +229,66 @@ async def retrieve_context(user_id: str, query: str, scope_doc_id: str | None = 
             logger.warning("[user_ask] skip doc %s: %s", d.doc_id, e)
             continue
 
-        try:
-            part = await retrieve_for_task(d.doc_id, query, task_type="ask")
-        except Exception as e:
-            logger.warning("[user_ask] retrieve failed for %s: %s", d.doc_id, e)
-            continue
+        for qtxt in expanded_queries:
+            try:
+                part = await hybrid_retrieve(
+                    doc_id=d.doc_id,
+                    query=qtxt,
+                    query_type="factual" if qtype == "definition" else "analytical",
+                    top_k=5,
+                    vector_weight=vector_w,
+                    bm25_weight=bm25_w,
+                    rrf_k=8 if qtype == "definition" else 10,
+                )
+            except Exception as e:
+                logger.warning("[user_ask] retrieve failed for %s: %s", d.doc_id, e)
+                continue
 
-        for c in part:
-            ch = dict(c)
-            ch["doc_id"] = d.doc_id
-            merged.append(ch)
+            for c in part:
+                ch = dict(c)
+                ch["doc_id"] = d.doc_id
+                ch["rrf_score"] = float(ch.get("rrf_score", ch.get("score", 0)) or 0) + _keyword_boost(ch, keywords)
+                merged.append(ch)
+
+    # Remove weak matches early so the final context is tighter/relevant.
+    merged = [c for c in merged if float(c.get("rrf_score", c.get("score", 0)) or 0) >= 0.006]
+    # Hard relevance filter (lexical + retrieval blend). Target >= 0.5.
+    filtered = []
+    for c in merged:
+        rel = _relevance_score(c, keywords)
+        if rel >= 0.5:
+            c = dict(c)
+            c["relevance_score"] = round(rel, 4)
+            filtered.append(c)
+    merged = filtered
+    # Force keyword presence for short/keyword-heavy queries.
+    if qtype != "explanation" and keywords and len(keywords) <= 3:
+        keyword_required = []
+        for c in merged:
+            text = f"{c.get('section', '')} {c.get('text', '')}".lower()
+            if any(re.search(rf"\b{re.escape(k)}\b", text) for k in keywords):
+                keyword_required.append(c)
+        merged = keyword_required
 
     merged.sort(key=lambda x: float(x.get("rrf_score", x.get("score", 0)) or 0), reverse=True)
+    merged = _dedupe_chunks(merged, similarity_threshold=0.9)
     merged = merged[:MERGE_POOL]
     merged = mmr_filter(merged, max_chunks=MMR_MAX, similarity_threshold=0.85)
     merged = _diverse_by_doc(merged, max_total=MMR_MAX, max_per_doc=3)
     merged = filter_context(merged, max_tokens=MAX_CONTEXT_TOKENS)
+    for i, c in enumerate(merged[:5], 1):
+        logger.info(
+            "[user_ask] query='%s' top%d doc=%s chunk=%s section=%s page=%s score=%.5f rel=%s preview=%s",
+            query_for_retrieval[:120],
+            i,
+            c.get("doc_id", ""),
+            c.get("chunk_id", ""),
+            (c.get("section", "") or "")[:60],
+            c.get("page", 1),
+            float(c.get("rrf_score", c.get("score", 0)) or 0),
+            c.get("relevance_score", ""),
+            (c.get("text", "") or "").replace("\n", " ")[:140],
+        )
     return merged
 
 
@@ -129,6 +302,8 @@ def post_filter(chunks: list[dict]) -> list[dict]:
 def should_call_llm(chunks: list[dict], query: str) -> bool:
     """Skip LLM for very strong match + simple definition-style queries."""
     if not chunks:
+        return True
+    if _query_type(query) == "explanation":
         return True
     top = float(chunks[0].get("rrf_score", chunks[0].get("score", 0)) or 0)
     if top < EXTRACTIVE_RRF:
@@ -173,6 +348,18 @@ def _sources_payload(chunks: list[dict]) -> list[dict]:
             "section": c.get("section", "") or "",
         })
     return out
+
+
+def _should_rerank(chunks: list[dict], query: str) -> bool:
+    """Only rerank when scores are ambiguous; keep speed fast by default."""
+    if len(chunks) < 5:
+        return False
+    q = query.lower().strip()
+    if len(q.split()) <= 3:
+        return False
+    s1 = float(chunks[0].get("rrf_score", chunks[0].get("score", 0)) or 0)
+    s2 = float(chunks[1].get("rrf_score", chunks[1].get("score", 0)) or 0)
+    return abs(s1 - s2) <= 0.01
 
 
 def _parse_llm_json(answer: str) -> dict[str, Any] | None:
@@ -299,9 +486,9 @@ async def ask_ai(
     t_start = time.time()
 
     nq = normalize_query(query)
-    if not nq:
+    if not nq or not is_valid_query(query):
         return {
-            "answer": NOT_FOUND,
+            "answer": "Please enter a valid question",
             "sources": [],
             "confidence": "low",
             "confidence_detail": compute_confidence([], num_chunks=0),
@@ -322,6 +509,25 @@ async def ask_ai(
     timings["retrieval_ms"] = round((time.time() - t0) * 1000, 1)
 
     chunks = post_filter(chunks)
+    # Top-k safety: if filtered chunks are still unrelated, return NOT_FOUND.
+    if chunks:
+        q_raw = nq.split("| keywords:")[0].strip()
+        q_keys = _keywords(q_raw)
+        rels = [_relevance_score(c, q_keys) for c in chunks[:MMR_MAX]]
+        gate = _relevance_gate_for_query(q_raw, bool(q_keys))
+        if rels and max(rels) < gate:
+            out = {
+                "answer": NO_RELEVANT if q_keys else NOT_FOUND,
+                "sources": [],
+                "confidence": "low",
+                "confidence_detail": compute_confidence([], num_chunks=0),
+                "timings": {**timings, "total_ms": round((time.time() - t_start) * 1000, 1)},
+                "cached": False,
+                "source_chunks": [],
+            }
+            if use_cache:
+                _put_user_ask_cache(ck, {k: v for k, v in out.items() if k != "cached"})
+            return out
     if not chunks:
         out = {
             "answer": NOT_FOUND,
@@ -337,9 +543,16 @@ async def ask_ai(
         return out
 
     top_score = float(chunks[0].get("rrf_score", chunks[0].get("score", 0)) or 0)
-    if top_score < MIN_TOP_RRF:
+    q_raw = nq.split("| keywords:")[0].strip()
+    q_keys = _keywords(q_raw)
+    top_rel = _relevance_score(chunks[0], q_keys)
+    rel_gate = _relevance_gate_for_query(q_raw, bool(q_keys))
+    # Hard relevance gate: score + relevance + BM25 presence for short queries.
+    short_query = len(re.findall(r"\w+", q_raw)) <= 5
+    has_bm25_signal = chunks[0].get("bm25_rank") is not None
+    if top_score < MIN_TOP_RRF or top_rel < rel_gate or (short_query and q_keys and _query_type(q_raw) != "explanation" and not has_bm25_signal):
         out = {
-            "answer": NOT_FOUND,
+            "answer": NO_RELEVANT if q_keys else NOT_FOUND,
             "sources": [],
             "confidence": "low",
             "confidence_detail": compute_confidence([top_score], num_chunks=len(chunks)),
@@ -350,6 +563,20 @@ async def ask_ai(
         if use_cache:
             _put_user_ask_cache(ck, {k: v for k, v in out.items() if k != "cached"})
         return out
+
+    if _should_rerank(chunks, nq):
+        try:
+            reranked = await rerank_chunks(
+                doc_id=f"userlib:{user_id}",
+                query=nq,
+                chunks=chunks,
+                min_candidates=5,
+                score_gap_threshold=0.01,
+            )
+            # Keep only best 5 after rerank and re-apply token cap.
+            chunks = post_filter(reranked[:MMR_MAX])
+        except Exception as e:
+            logger.warning("[user_ask] rerank skipped due to error: %s", e)
 
     if not should_call_llm(chunks, nq):
         ex = extractive_answer(chunks, nq)

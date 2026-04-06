@@ -912,6 +912,8 @@ async def ask_question(req: AskRequest):
     _log_request("/ask", req.doc_id or "all_user_docs", text)
     if not text:
         raise HTTPException(400, "Provide `query` or `question`")
+    if len(text) < 3:
+        raise HTTPException(400, "Please enter a valid question")
 
     llm_v = norm_llm_variant(req.llm_variant or "30b")
 
