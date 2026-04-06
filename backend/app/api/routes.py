@@ -91,13 +91,13 @@ class AskRequest(BaseModel):
     question: str = ""  # alias for query (backward compatible)
     doc_id: Optional[str] = None  # optional: restrict search to one doc
     stream: bool = False
-    llm_variant: Optional[str] = "105b"  # "105b" | "30b"
+    llm_variant: Optional[str] = "30b"  # default 30b, switchable to 105b
 
 class QuizStartRequest(BaseModel):
     doc_id: str
     user_id: str = "default_user"
     quiz_type: str = "quiz"
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
     refresh: bool = False
     previous_output: Optional[str] = None
     source_chunk_ids: Optional[list] = None
@@ -114,7 +114,7 @@ class GenerateRequest(BaseModel):
     content_type: str
     user_id: str = "default_user"
     query: str = ""
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
     refresh: bool = False
     previous_output: Optional[str] = None
     source_chunk_ids: Optional[list] = None
@@ -124,7 +124,7 @@ class MentorRequest(BaseModel):
     question: str
     user_id: str = "default_user"
     history: list = Field(default_factory=list)
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
 
 class AuthRequest(BaseModel):
     username: str
@@ -137,7 +137,7 @@ class SearchRequest(BaseModel):
     query: str
     mode: str = "auto"  # keyword | hybrid | ai | auto
     user_id: str = "default_user"
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
 
 
 class UserSearchRequest(BaseModel):
@@ -159,14 +159,14 @@ class CourseActionRequest(BaseModel):
     doc_id: str
     node_id: str
     action: str  # summarize | explain
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
 
 class CourseChatRequest(BaseModel):
     doc_id: str
     question: str
     node_id: str = ""
     user_id: str = "default_user"
-    llm_variant: Optional[str] = "105b"
+    llm_variant: Optional[str] = "30b"
 
 
 # --- Utility ---
@@ -913,7 +913,7 @@ async def ask_question(req: AskRequest):
     if not text:
         raise HTTPException(400, "Provide `query` or `question`")
 
-    llm_v = norm_llm_variant(req.llm_variant or "105b")
+    llm_v = norm_llm_variant(req.llm_variant or "30b")
 
     result = await ask_user_library_ai(
         text,
