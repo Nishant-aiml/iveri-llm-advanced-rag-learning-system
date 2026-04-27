@@ -81,6 +81,10 @@ USER_LIBRARY_ASK_PROMPT = f"""You MUST answer ONLY using the provided context ex
 Do NOT use outside knowledge or guess.
 If the context is unrelated to the question, you MUST return not-found JSON.
 You MAY explain, simplify, and rephrase as long as the meaning stays grounded in the context.
+Prefer a teacher-like explanation style:
+- 2-4 concise sentences
+- Include short bullet points when helpful
+- Do not copy long raw spans verbatim unless quoting a key term
 
 If the answer is not present in the context, respond with JSON exactly:
 {{"answer": "Not found in your documents", "sources": [], "confidence": "low"}}

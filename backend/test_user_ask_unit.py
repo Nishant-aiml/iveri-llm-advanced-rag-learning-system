@@ -43,5 +43,12 @@ def test_query_validation_blocks_garbage():
     assert not ua.is_valid_query("  ")
 
 
+def test_phrase_match_beats_partial_match():
+    keys = ua._keywords("what is machine learning")
+    ml_chunk = {"section": "Machine Learning", "text": "Machine learning is a subset of AI.", "rrf_score": 0.02}
+    machine_code_chunk = {"section": "Python Execution", "text": "Python compiles to bytecode before machine code execution.", "rrf_score": 0.02}
+    assert ua._relevance_score(ml_chunk, keys) > ua._relevance_score(machine_code_chunk, keys)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

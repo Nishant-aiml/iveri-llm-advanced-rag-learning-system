@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 NOT_FOUND = "Not found in your documents"
 NO_RELEVANT = "No relevant content found in your documents"
+ASK_CACHE_VERSION = "v2"
+MAX_FOLLOWUP_MEMORY = 500
+_last_query_by_user: dict[str, str] = {}
 
 
 def _put_user_ask_cache(key: str, payload: dict) -> None:
@@ -123,9 +126,22 @@ def _relevance_score(chunk: dict, keywords: list[str]) -> float:
         if re.search(rf"\b{re.escape(k)}\b", text):
             hits += 1
     overlap = hits / max(1, len(keywords))
+    phrase = " ".join(keywords[:3]).strip()
+    phrase_hit = 1.0 if phrase and phrase in text else 0.0
     # Scale RRF into [0,1]-ish and blend with lexical overlap.
     base_norm = min(base * 20.0, 1.0)
-    return 0.65 * overlap + 0.35 * base_norm
+    return 0.5 * overlap + 0.2 * base_norm + 0.3 * phrase_hit
+
+
+def _keyword_coverage(chunk: dict, keywords: list[str]) -> float:
+    if not keywords:
+        return 0.0
+    text = f"{chunk.get('section', '')} {chunk.get('text', '')}".lower()
+    matched = 0
+    for k in keywords:
+        if re.search(rf"\b{re.escape(k)}\b", text):
+            matched += 1
+    return matched / max(1, len(keywords))
 
 
 def _relevance_gate_for_query(query: str, has_keywords: bool) -> float:
@@ -160,8 +176,39 @@ def _dedupe_chunks(chunks: list[dict], similarity_threshold: float = 0.9) -> lis
 
 
 def _cache_key(user_id: str, normalized_q: str) -> str:
-    h = hashlib.sha256(f"{user_id}\n{normalized_q}".encode("utf-8")).hexdigest()
+    h = hashlib.sha256(f"{ASK_CACHE_VERSION}\n{user_id}\n{normalized_q}".encode("utf-8")).hexdigest()
     return h
+
+
+def _remember_last_query(user_id: str, query: str) -> None:
+    q = (query or "").strip()
+    if not q:
+        return
+    _last_query_by_user[user_id] = q
+    # Bounded in-memory store to avoid unbounded growth.
+    if len(_last_query_by_user) > MAX_FOLLOWUP_MEMORY:
+        first_key = next(iter(_last_query_by_user))
+        _last_query_by_user.pop(first_key, None)
+
+
+def _resolve_followup_query(user_id: str, raw_query: str) -> str:
+    q = (raw_query or "").strip()
+    if not q:
+        return q
+    is_explain_followup = bool(
+        re.match(
+            r"^(?:pls|please)?\s*(?:can you\s*)?(?:explain|simplify|describe|rephrase)"
+            r"(?:\s+this|\s+it)?(?:\s+in\s+detail)?\s*$",
+            q,
+            flags=re.IGNORECASE,
+        )
+    )
+    if not is_explain_followup:
+        return q
+    prev = (_last_query_by_user.get(user_id) or "").strip()
+    if not prev:
+        return q
+    return f"Explain this topic from my documents in simple terms: {prev}"
 
 
 def _diverse_by_doc(chunks: list[dict], max_total: int = MMR_MAX, max_per_doc: int = 3) -> list[dict]:
@@ -269,6 +316,16 @@ async def retrieve_context(user_id: str, query: str, scope_doc_id: str | None = 
             if any(re.search(rf"\b{re.escape(k)}\b", text) for k in keywords):
                 keyword_required.append(c)
         merged = keyword_required
+    # For multi-keyword definition queries, require phrase match or high keyword coverage.
+    if qtype == "definition" and len(keywords) >= 2:
+        strict = []
+        phrase = " ".join(keywords[:3]).strip()
+        for c in merged:
+            text = f"{c.get('section', '')} {c.get('text', '')}".lower()
+            coverage = _keyword_coverage(c, keywords)
+            if (phrase and phrase in text) or coverage >= 0.75:
+                strict.append(c)
+        merged = strict
 
     merged.sort(key=lambda x: float(x.get("rrf_score", x.get("score", 0)) or 0), reverse=True)
     merged = _dedupe_chunks(merged, similarity_threshold=0.9)
@@ -304,6 +361,11 @@ def should_call_llm(chunks: list[dict], query: str) -> bool:
     if not chunks:
         return True
     if _query_type(query) == "explanation":
+        return True
+    q_raw = query.split("| keywords:")[0].strip().lower()
+    q_keys = _keywords(q_raw)
+    if _query_type(q_raw) == "definition" and len(q_keys) >= 2:
+        # For concept definitions, synthesize from multiple chunks instead of single extractive snippet.
         return True
     top = float(chunks[0].get("rrf_score", chunks[0].get("score", 0)) or 0)
     if top < EXTRACTIVE_RRF:
@@ -484,9 +546,10 @@ async def ask_ai(
     """Single entry point for user-library AI Ask."""
     timings: dict[str, float] = {}
     t_start = time.time()
+    raw_query = _resolve_followup_query(user_id, query)
 
-    nq = normalize_query(query)
-    if not nq or not is_valid_query(query):
+    nq = normalize_query(raw_query)
+    if not nq or not is_valid_query(raw_query):
         return {
             "answer": "Please enter a valid question",
             "sources": [],
@@ -615,4 +678,7 @@ async def ask_ai(
     }
     if use_cache:
         _put_user_ask_cache(ck, {k: v for k, v in out.items() if k != "cached"})
+    # Remember only meaningful user questions, not resolved follow-up templates.
+    if _query_type(query) != "explanation":
+        _remember_last_query(user_id, query)
     return out
