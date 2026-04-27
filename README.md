@@ -1,11 +1,11 @@
 <div align="center">
 
 <!-- Header Banner -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=220&section=header&text=IVERI%20LLM&fontSize=80&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=Intelligent%20AI%20Learning%20%26%20Student%20Monitoring%20System&descAlignY=55&descSize=18&descColor=d1d5db" width="100%" alt="IVERI LLM - Intelligent AI Learning & Student Monitoring System" />
+<img src="https://capsule-render.vercel.app/api?type=waving&amp;color=0:1e3a5f,50:2563eb,100:7c3aed&amp;height=220&amp;section=header&amp;text=IVERI%20LLM&amp;fontSize=80&amp;fontColor=ffffff&amp;animation=fadeIn&amp;fontAlignY=35&amp;desc=Intelligent%20AI%20Learning%20%26%20Student%20Monitoring%20System&amp;descAlignY=55&amp;descSize=18&amp;descColor=d1d5db" width="100%" alt="IVERI LLM - Intelligent AI Learning and Student Monitoring System" />
 
 <!-- Fallback title if banner doesn't load -->
 <!-- # 🧠 IVERI LLM -->
-<!-- **Intelligent AI Learning & Student Monitoring System** -->
+<!-- **Intelligent AI Learning and Student Monitoring System** -->
 
 <!-- Badges -->
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
@@ -545,7 +545,7 @@ The system exposes **40+ REST endpoints** via FastAPI. Here are the key endpoint
 </details>
 
 <details>
-<summary><strong>🤖 AI & RAG</strong></summary>
+<summary><strong>🤖 AI &amp; RAG</strong></summary>
 
 | Method | Endpoint | Description |
 |:---:|:---|:---|
@@ -557,7 +557,7 @@ The system exposes **40+ REST endpoints** via FastAPI. Here are the key endpoint
 </details>
 
 <details>
-<summary><strong>📝 Quiz & Learning</strong></summary>
+<summary><strong>📝 Quiz &amp; Learning</strong></summary>
 
 | Method | Endpoint | Description |
 |:---:|:---|:---|
@@ -569,7 +569,7 @@ The system exposes **40+ REST endpoints** via FastAPI. Here are the key endpoint
 </details>
 
 <details>
-<summary><strong>📊 Analytics & Personalization</strong></summary>
+<summary><strong>📊 Analytics &amp; Personalization</strong></summary>
 
 | Method | Endpoint | Description |
 |:---:|:---|:---|
@@ -1099,6 +1099,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <br/>
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=120&section=footer" width="100%" alt="" />
+<img src="https://capsule-render.vercel.app/api?type=waving&amp;color=0:1e3a5f,50:2563eb,100:7c3aed&amp;height=120&amp;section=footer" width="100%" alt="" />
 
 </div>
