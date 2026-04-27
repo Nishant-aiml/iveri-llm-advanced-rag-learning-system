@@ -21,7 +21,7 @@
 
 <br/>
 
-> **A hybrid Retrieval-Augmented Generation (RAG) pipeline** combining FAISS vector search, BM25 keyword indexing, and Reciprocal Rank Fusion — with measured +5% Recall@5 improvement over vector-only baseline, 95.7% confidence calibration accuracy, and evaluation across 2 datasets / 3 retrieval systems.
+> **A hybrid Retrieval-Augmented Generation (RAG) pipeline** combining FAISS vector search, BM25 keyword indexing, and Reciprocal Rank Fusion — with measured Recall@5 improvement from 0.700 to 0.720 (~2.9%) over vector-only baseline, 95.7% confidence calibration accuracy, and evaluation across 2 datasets.
 
 <br/>
 
@@ -723,18 +723,18 @@ The evaluation is an **ablation study** — testing what happens when you disabl
 | MiniLM only (FAISS) | 0.833 | 0.889 | 0.880 | 0.692 | 0.0% |
 | **MiniLM + BM25 + RRF** | **0.833** | **0.889** | **0.889** | **0.692** | **0.0%** |
 
-> BM25-only shows 0 recall on Dataset B because no BM25 index was built for this document (uploaded before BM25 indexing was configured). This is an honest limitation, not excluded data.
+> BM25-only shows 0 recall on Dataset B because no BM25 index was built for this document (uploaded before BM25 indexing was configured). BM25-only comparison is therefore limited to Dataset A. This is an honest limitation, not excluded data.
 
-### Answer Quality
+### Approximate Answer Correctness
 
 | Metric | Dataset A | Dataset B | Combined |
 |:---|:---:|:---:|:---:|
-| Answer Accuracy | 82.0% | 83.3% | **82.5%** |
+| Approx. Answer Correctness | 82.0% | 83.3% | **82.5%** |
 | Semantic Similarity | 0.599 | 0.692 | 0.646 |
 | Key Term Coverage | 50.4% | 44.7% | 47.6% |
 | Hallucination Rate | 2.0% | 0.0% | 1.0% |
 
-**Answer accuracy** is computed as: factual queries require ≥50% key term coverage, conceptual/multi-hop queries require ≥0.4 semantic similarity to expected answer.
+**Note**: Answer correctness is a heuristic estimate, not an exact semantic evaluation. Factual queries require ≥50% key term coverage in retrieved chunks; conceptual/multi-hop queries require ≥0.4 semantic similarity to the expected answer. This provides a practical approximation of answer quality without requiring LLM-based judging.
 
 ### Per-Query-Type Breakdown (Dataset A)
 
@@ -887,9 +887,13 @@ The system uses heading detection (H1/H2/H3) from PyMuPDF parsing, supplemented 
 | MiniLM only | 0.700 | 0.781 | **0.642** | 2.0% | 0.1ms |
 | **Hybrid** | **0.720** | **0.793** | 0.599 | **2.0%** | 66.4ms |
 
+**Improvement**: Hybrid Recall@5 (0.720) vs MiniLM-only (0.700) = **+2.9%**. Hybrid vs BM25-only (0.655) = **+9.9%**.
+
 **Why hybrid improves recall**: RRF fusion combines both ranking signals. When a keyword query like "LEGB rule" doesn't match well semantically, BM25 catches it. When a conceptual query like "why does the GIL exist" needs meaning, MiniLM catches it.
 
 **Why BM25 alone increases hallucination**: BM25 matches keywords without understanding context. A chunk containing the right words but wrong meaning gets ranked high, leading to 4× more hallucination (8% vs 2%).
+
+> **Note**: BM25-only comparison is limited to Dataset A due to indexing constraints on Dataset B.
 
 <br/>
 
@@ -918,13 +922,17 @@ The hybrid system optimizes **retrieval coverage**, not embedding similarity. Th
 |:---|:---:|:---:|:---:|
 | Recall@5 | 0.720 | 0.889 | ✅ |
 | Semantic Sim | 0.599 | 0.692 | ✅ |
-| Answer Accuracy | 82.0% | 83.3% | ✅ |
+| Approx. Correctness | 82.0% | 83.3% | ✅ |
 | Trust (high-conf) | 95.7% | 94.1% | ✅ |
 | Hallucination | 2.0% | 0.0% | ✅ |
 
-**Analysis**: Results are consistent across two different domains (programming vs AI/ML theory). Both datasets show ~95% confidence calibration, ~82% answer accuracy, and low hallucination rates.
+**Analysis**: Results are consistent across two different domains (programming vs AI/ML theory). Both datasets show ~95% confidence calibration, ~82% approximate answer correctness, and low hallucination rates.
 
 **Honest scope**: Dataset B has higher recall (0.889 vs 0.720) likely because its document has shorter, more focused chunks (21 vs 75). This makes retrieval easier, not necessarily better. Cross-domain generalization is partially supported — larger-scale testing across more domains and document types is needed for stronger claims.
+
+### Statistical Context
+
+This evaluation uses **80 queries across 2 datasets** (60 + 20). While results are consistent across domains, this sample size is insufficient for statistical significance claims. Improvements (e.g., +2.9% Recall@5) should be interpreted as **directional evidence**, not statistically significant differences. Larger-scale validation (500+ queries across 5+ domains) would be needed for publication-grade confidence intervals.
 
 <br/>
 
@@ -980,30 +988,30 @@ python evaluation/run_evaluation.py   # Ablation × 2 datasets, ~3 min
 ## 💬 Common Questions & Answers
 
 <details>
-<summary><strong>Q1: Why is the improvement only ~3-5%?</strong></summary>
+<summary><strong>Q1: Why is the improvement only ~2.9%?</strong></summary>
 
-The MiniLM vector baseline is already strong (Recall@5 = 0.700). At high baselines, each percentage point of improvement is harder to achieve. The hybrid system's gain comes from edge-case queries where exact keyword matching helps — these are the queries that would fail with vector-only search.
+The MiniLM vector baseline is already strong (Recall@5 = 0.700). At high baselines, each percentage point of improvement is harder to achieve. The hybrid system's +2.9% gain (0.700 → 0.720) comes from edge-case queries where exact keyword matching helps — these are the queries that would fail with vector-only search.
 
 </details>
 
 <details>
 <summary><strong>Q2: Why does semantic similarity decrease in hybrid mode?</strong></summary>
 
-Hybrid retrieval prioritizes **coverage** over **embedding closeness**. BM25 introduces keyword-matched chunks that may not be the closest in embedding space but contain factually relevant content. The small drop (0.642 → 0.599) is expected — recall improves because the system finds more correct chunks, even if they score slightly lower on cosine similarity.
+Hybrid retrieval prioritizes **coverage** over **embedding closeness**. BM25 introduces keyword-matched chunks that may not be the closest in embedding space but contain factually relevant content. The small drop (0.642 → 0.599, a -0.043 difference) is expected — recall improves because the system finds more correct chunks, even if they score slightly lower on cosine similarity.
 
 </details>
 
 <details>
 <summary><strong>Q3: How does this generalize to other domains?</strong></summary>
 
-Tested on 2 datasets (Python textbook + AI/ML notes). Both show consistent results: ~95% confidence calibration, ~82% answer accuracy, <2% hallucination. The AI/ML dataset has higher recall (0.889 vs 0.720) due to shorter chunks. Larger-scale testing across more domains is needed for stronger generalization claims.
+Tested on 2 datasets (Python textbook + AI/ML notes). Both show consistent results: ~95% confidence calibration, ~82% approximate answer correctness, <2% hallucination. The AI/ML dataset has higher recall (0.889 vs 0.720) due to shorter chunks. Larger-scale testing across more domains is needed for stronger generalization claims.
 
 </details>
 
 <details>
 <summary><strong>Q4: How do you evaluate answer correctness?</strong></summary>
 
-Four complementary metrics: (1) **Recall@k** measures whether correct chunks are retrieved, (2) **Semantic similarity** compares retrieved text to expected answers, (3) **Key term coverage** checks if important terms appear in results, (4) **Hallucination rate** flags answers with low similarity AND low coverage.
+Four complementary metrics: (1) **Recall@k** measures whether correct chunks are retrieved, (2) **Semantic similarity** compares retrieved text to expected answers, (3) **Key term coverage** checks if important terms appear in results, (4) **Hallucination rate** flags answers with low similarity AND low coverage. Note that "Approximate Answer Correctness" (82.5%) is a heuristic estimate using coverage and similarity thresholds, not an exact LLM-judged evaluation.
 
 </details>
 
