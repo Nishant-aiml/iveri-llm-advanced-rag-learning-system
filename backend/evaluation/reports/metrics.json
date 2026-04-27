@@ -1,5 +1,5 @@
 {
-  "timestamp": "20260427_220336",
+  "timestamp": "20260427_222222",
   "datasets": [
     {
       "dataset": "Python Textbook",
@@ -13,7 +13,7 @@
           "avg_sim": 0.5701,
           "avg_cov": 0.4857,
           "hallucination_pct": 8.0,
-          "avg_lat": 0.3,
+          "avg_lat": 0.2,
           "p50_lat": 0.0,
           "p95_lat": 1.5
         },
@@ -24,20 +24,20 @@
           "avg_sim": 0.6423,
           "avg_cov": 0.4973,
           "hallucination_pct": 2.0,
-          "avg_lat": 0.2,
+          "avg_lat": 0.1,
           "p50_lat": 0.0,
           "p95_lat": 1.0
         },
         "hybrid": {
-          "recall3": 0.6083,
-          "recall5": 0.735,
-          "mrr": 0.7847,
-          "avg_sim": 0.6023,
-          "avg_cov": 0.5023,
+          "recall3": 0.5983,
+          "recall5": 0.72,
+          "mrr": 0.793,
+          "avg_sim": 0.5992,
+          "avg_cov": 0.504,
           "hallucination_pct": 2.0,
-          "avg_lat": 74.3,
-          "p50_lat": 71.9,
-          "p95_lat": 102.4
+          "avg_lat": 66.4,
+          "p50_lat": 64.0,
+          "p95_lat": 85.2
         }
       },
       "trust": {
@@ -61,7 +61,7 @@
         "factual": {
           "count": 20,
           "avg_sim": 0.5838,
-          "avg_cov": 0.59,
+          "avg_cov": 0.5942,
           "correct_pct": 95.0
         },
         "conceptual": {
@@ -72,7 +72,7 @@
         },
         "multi-hop": {
           "count": 10,
-          "avg_sim": 0.5902,
+          "avg_sim": 0.575,
           "avg_cov": 0.44,
           "correct_pct": 100.0
         }
@@ -80,7 +80,8 @@
       "adversarial": {
         "total": 10,
         "correct": 7
-      }
+      },
+      "answer_accuracy": 82.0
     },
     {
       "dataset": "AI/ML Notes",
@@ -88,9 +89,9 @@
       "queries": 20,
       "systems": {
         "bm25": {
-          "recall3": 0,
-          "recall5": 0,
-          "mrr": 0,
+          "recall3": 0.0,
+          "recall5": 0.0,
+          "mrr": 0.0,
           "avg_sim": 0,
           "avg_cov": 0,
           "hallucination_pct": 0,
@@ -99,9 +100,9 @@
           "p95_lat": 0.0
         },
         "vector": {
-          "recall3": 0,
-          "recall5": 0,
-          "mrr": 0,
+          "recall3": 0.8333,
+          "recall5": 0.8889,
+          "mrr": 0.8796,
           "avg_sim": 0.6924,
           "avg_cov": 0.4472,
           "hallucination_pct": 0.0,
@@ -110,27 +111,27 @@
           "p95_lat": 1.0
         },
         "hybrid": {
-          "recall3": 0,
-          "recall5": 0,
-          "mrr": 0,
+          "recall3": 0.8333,
+          "recall5": 0.8889,
+          "mrr": 0.8889,
           "avg_sim": 0.6924,
           "avg_cov": 0.4472,
           "hallucination_pct": 0.0,
-          "avg_lat": 82.6,
-          "p50_lat": 71.8,
-          "p95_lat": 214.5
+          "avg_lat": 65.5,
+          "p50_lat": 63.8,
+          "p95_lat": 103.0
         }
       },
       "trust": {
         "high": {
           "count": 17,
-          "correct": 0,
-          "accuracy": 0.0
+          "correct": 16,
+          "accuracy": 94.1
         },
         "medium": {
           "count": 2,
-          "correct": 1,
-          "accuracy": 50.0
+          "correct": 2,
+          "accuracy": 100.0
         },
         "low": {
           "count": 1,
@@ -143,29 +144,30 @@
           "count": 10,
           "avg_sim": 0.7707,
           "avg_cov": 0.6,
-          "correct_pct": 0.0
+          "correct_pct": 100.0
         },
         "conceptual": {
           "count": 5,
           "avg_sim": 0.5676,
           "avg_cov": 0.05,
-          "correct_pct": 0.0
+          "correct_pct": 80.0
         },
         "multi-hop": {
           "count": 3,
           "avg_sim": 0.6398,
           "avg_cov": 0.6,
-          "correct_pct": 0.0
+          "correct_pct": 100.0
         }
       },
       "adversarial": {
         "total": 2,
         "correct": 2
-      }
+      },
+      "answer_accuracy": 83.3
     }
   ],
   "cross_dataset": {
-    "hybrid_avg_sim": 0.6473,
-    "hybrid_avg_lat": 78.4
+    "hybrid_avg_sim": 0.6458,
+    "hybrid_avg_lat": 66.0
   }
 }

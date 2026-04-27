@@ -33,10 +33,10 @@
 ### A04: Explain quantum computing error correction.
 - Type: adversarial | Category: false_positive
 - Semantic Sim: 0 | Coverage: 0.4
-- Confidence: 0.49 (medium)
+- Confidence: 0.59 (medium)
 
 ### A09: How do you train a GPT model from scratch?
 - Type: adversarial | Category: false_positive
 - Semantic Sim: 0 | Coverage: 0.4
-- Confidence: 0.437 (medium)
+- Confidence: 0.537 (medium)
 

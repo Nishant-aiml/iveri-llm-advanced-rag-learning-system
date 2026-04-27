@@ -36,7 +36,29 @@ DATASET_B = [
   {"id":"B_A02","type":"adversarial","query":"How do you set up a Docker container?","expected_answer":"NOT_IN_DOCUMENT","key_terms":[]}
 ]
 
-# Ground truth chunk IDs for Dataset A (from previous evaluation)
+# Ground truth chunk IDs for Dataset B (doc_cdda7fe45c88, manually mapped)
+GT_B = {
+    "B_F01": ["c_4607acce81eb"],
+    "B_F02": ["c_bfdf3888fb26"],
+    "B_F03": ["c_443ed199d028"],
+    "B_F04": ["c_b0d93a84cad4"],
+    "B_F05": ["c_6363ec1cd5e7", "c_ec76e4bfaa4e"],
+    "B_F06": ["c_3be36929dc30", "c_25d7f11d4b81"],
+    "B_F07": ["c_850eb5f84c66"],
+    "B_F08": ["c_4be191accf35"],
+    "B_F09": ["c_27adbfae6f16"],
+    "B_F10": ["c_56466a6f0e45"],
+    "B_C01": ["c_3da2e4be9c12", "c_4607acce81eb"],
+    "B_C02": ["c_4e3b6f90284d"],
+    "B_C03": ["c_4be191accf35", "c_27adbfae6f16"],
+    "B_C04": ["c_fad9e495bfc4"],
+    "B_C05": ["c_b48373026fe5"],
+    "B_M01": ["c_27adbfae6f16", "c_4be191accf35", "c_e437c0ea41d9"],
+    "B_M02": ["c_6363ec1cd5e7", "c_3be36929dc30"],
+    "B_M03": ["c_fad9e495bfc4", "c_4be191accf35"],
+}
+
+# Ground truth chunk IDs for Dataset A (doc_11c024ccf162, manually mapped)
 GT_A = {
     "F01":["c_7ecfd4d5f417","c_289a9189d17b","c_bbbcc3794f4b"],
     "F02":["c_b380c1ac25e1","c_a9a432bcb4ed","c_a8f2b3df765f"],
@@ -240,14 +262,24 @@ async def evaluate_dataset(doc_id, dataset, gt_map, label):
             "correct_pct": pct(sum(1 for d in type_items if d["correct"]), len(type_items)),
         }
 
-    # Adversarial
-    adv = [d for d in details if d["type"]=="adversarial"]
-    adv_refused = sum(1 for d in adv if not d["correct"] == False)  # trust: low vec score
+    # Answer correctness
+    in_scope = [d for d in details if d["type"] != "adversarial"]
+    # Factual: key term presence in top chunk
+    # Conceptual/multi-hop: semantic similarity > threshold
+    correct_answers = 0
+    for d in in_scope:
+        if d["type"] == "factual":
+            correct_answers += 1 if d["coverage"] >= 0.5 else 0
+        else:
+            correct_answers += 1 if d["semantic_sim"] >= 0.4 else 0
+    answer_accuracy = pct(correct_answers, len(in_scope))
 
+    adv = [d for d in details if d["type"] == "adversarial"]
     return {
         "dataset": label, "doc_id": doc_id, "queries": len(dataset),
         "systems": compiled, "trust": trust, "per_type": per_type,
         "adversarial": {"total":len(adv),"correct":sum(1 for d in adv if d["correct"])},
+        "answer_accuracy": answer_accuracy,
         "details": details
     }
 
@@ -267,7 +299,7 @@ async def main():
 
     # Dataset B
     print(f"\n  [B] AI/ML Notes ({DATASET_B_DOC}) — {len(DATASET_B)} queries")
-    res_b = await evaluate_dataset(DATASET_B_DOC, DATASET_B, {}, "AI/ML Notes")
+    res_b = await evaluate_dataset(DATASET_B_DOC, DATASET_B, GT_B, "AI/ML Notes")
 
     # Print results
     for res in [res_a, res_b]:

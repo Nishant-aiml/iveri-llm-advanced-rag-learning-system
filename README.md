@@ -694,11 +694,11 @@ docker run -p 8000:8000 --env-file .env iveri-llm
 
 ## 📊 Evaluation & Metrics
 
-> **Methodology**: Ablation study on 80 queries across 2 datasets | **Ground Truth**: Independent manual chunk-ID mappings | **Source**: `evaluation/run_evaluation.py`
+> **Methodology**: Ablation study across 2 datasets (80 queries) with independent ground truth | **Source**: `evaluation/run_evaluation.py`
 
-### How Your System Works
+### How the System Works
 
-Your system uses **MiniLM-L6-v2** (embedding model) + **BM25** (keyword matching) **together** in a hybrid pipeline:
+The system uses **MiniLM-L6-v2** (embedding model) + **BM25** (keyword matching) **together** in a hybrid pipeline:
 
 ```
 Query → MiniLM-L6-v2 embedding → FAISS vector search (semantic)
@@ -706,33 +706,43 @@ Query → MiniLM-L6-v2 embedding → FAISS vector search (semantic)
       → RRF Fusion (merges both ranked lists into one)
 ```
 
-The evaluation below is an **ablation study** — testing what happens when you turn off one component:
+The evaluation is an **ablation study** — testing what happens when you disable one component:
 
-### Ablation Study (Dataset A: Python Textbook, 60 queries)
+### Ablation Results (Dataset A: Python Textbook — 60 queries, fully labeled)
 
 | Configuration | Recall@3 | Recall@5 | MRR | Semantic Sim | Hallucination |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| MiniLM only (FAISS vector search) | 0.593 | 0.700 | 0.781 | 0.642 | 2.0% |
-| BM25 only (keyword search, no MiniLM) | 0.567 | 0.655 | 0.800 | 0.570 | 8.0% |
-| **MiniLM + BM25 + RRF (your system)** | **0.608** | **0.735** | **0.785** | **0.602** | **2.0%** |
+| MiniLM only (FAISS) | 0.593 | 0.700 | 0.781 | 0.642 | 2.0% |
+| BM25 only (keyword) | 0.567 | 0.655 | 0.800 | 0.570 | 8.0% |
+| **MiniLM + BM25 + RRF** | **0.598** | **0.720** | **0.793** | **0.599** | **2.0%** |
 
-**What this shows**:
-- Adding BM25 keyword search to MiniLM improves Recall@5 by **+5.0%** (catches queries where exact terms matter)
-- MiniLM alone has better semantic similarity but misses keyword-specific matches
-- BM25 alone has 4× higher hallucination risk — it needs MiniLM's semantic understanding
-- The hybrid fusion gets the best of both: high recall + low hallucination
+### Cross-Domain Validation (Dataset B: AI/ML Notes — 20 queries, 18 labeled)
 
-### Why +5% Over a Strong Baseline Matters
+| Configuration | Recall@3 | Recall@5 | MRR | Semantic Sim | Hallucination |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| MiniLM only (FAISS) | 0.833 | 0.889 | 0.880 | 0.692 | 0.0% |
+| **MiniLM + BM25 + RRF** | **0.833** | **0.889** | **0.889** | **0.692** | **0.0%** |
 
-MiniLM vector search already achieves Recall@5 = 0.700. Improving a strong baseline is harder than improving a weak one — each additional percentage point means the system catches edge-case queries that pure semantic search misses (e.g., exact technical terms, abbreviations, specific function names).
+> BM25-only shows 0 recall on Dataset B because no BM25 index was built for this document (uploaded before BM25 indexing was configured). This is an honest limitation, not excluded data.
 
-### Per-Query-Type Breakdown
+### Answer Quality
+
+| Metric | Dataset A | Dataset B | Combined |
+|:---|:---:|:---:|:---:|
+| Answer Accuracy | 82.0% | 83.3% | **82.5%** |
+| Semantic Similarity | 0.599 | 0.692 | 0.646 |
+| Key Term Coverage | 50.4% | 44.7% | 47.6% |
+| Hallucination Rate | 2.0% | 0.0% | 1.0% |
+
+**Answer accuracy** is computed as: factual queries require ≥50% key term coverage, conceptual/multi-hop queries require ≥0.4 semantic similarity to expected answer.
+
+### Per-Query-Type Breakdown (Dataset A)
 
 | Query Type | Count | Semantic Sim | Coverage | Accuracy |
 |:---|:---:|:---:|:---:|:---:|
-| Factual | 20 | 0.584 | 59.0% | 95.0% |
+| Factual | 20 | 0.584 | 59.4% | 95.0% |
 | Conceptual | 20 | 0.627 | 44.6% | 95.0% |
-| Multi-hop | 10 | 0.590 | 44.0% | 100.0% |
+| Multi-hop | 10 | 0.575 | 44.0% | 100.0% |
 
 ### Confidence Calibration (Trust Layer)
 
@@ -740,33 +750,25 @@ MiniLM vector search already achieves Recall@5 = 0.700. Improving a strong basel
 confidence = 0.4 × norm_vector_score + 0.3 × norm_rrf_score + 0.3 × agreement_overlap
 ```
 
-| Confidence Level | Threshold | Count | Correct | Accuracy |
-|:---|:---:|:---:|:---:|:---:|
-| High | > 0.7 | 47 | 45 | **95.7%** |
-| Medium | 0.4–0.7 | 10 | 7 | 70.0% |
-| Low (reject) | < 0.4 | 3 | 3 | 100.0% |
+| Confidence | Threshold | Dataset A |  | Dataset B |  |
+|:---|:---:|:---:|:---:|:---:|:---:|
+|  |  | Count | Accuracy | Count | Accuracy |
+| High | > 0.7 | 47 | **95.7%** | 17 | **94.1%** |
+| Medium | 0.4–0.7 | 10 | 70.0% | 2 | 100.0% |
+| Low | < 0.4 | 3 | 100.0% | 1 | 100.0% |
 
-95.7% of high-confidence answers actually contain relevant content. All low-confidence queries were correctly rejected.
-
-### Cross-Dataset Validation (Dataset B: AI/ML Notes, 20 queries)
-
-| Configuration | Semantic Sim | Coverage | Avg Latency |
-|:---|:---:|:---:|:---:|
-| MiniLM only | 0.692 | 44.7% | 0.1ms |
-| MiniLM + BM25 + RRF | 0.692 | 44.7% | 82.6ms |
-
-Semantic similarity on a different domain (AI/ML) is comparable to Dataset A (0.69 vs 0.60), showing consistent retrieval quality.
+Confidence calibration is consistent across domains: ~95% of high-confidence answers contain relevant content in both datasets.
 
 ### Latency (Retrieval-Only, excludes LLM generation)
 
 | Component | Avg | p50 | p95 |
 |:---|:---:|:---:|:---:|
 | MiniLM embedding | 22.6ms | — | — |
-| FAISS vector search | 0.2ms | 0.0ms | 1.0ms |
-| BM25 keyword search | 0.3ms | 0.0ms | 1.5ms |
-| **Full hybrid pipeline** | **74.3ms** | **71.9ms** | **102.4ms** |
+| FAISS vector search | 0.1ms | 0.0ms | 1.0ms |
+| BM25 keyword search | 0.2ms | 0.0ms | 1.5ms |
+| **Full hybrid pipeline** | **66.4ms** | **64.0ms** | **85.2ms** |
 
-Hybrid latency (~74ms) is dominated by BM25 tokenization + RRF fusion. LLM generation (Sarvam-30B) adds ~500-2000ms when API is available.
+Hybrid latency (~66ms) is dominated by BM25 tokenization + RRF fusion. LLM generation (Sarvam-30B) adds ~500–2000ms.
 
 <br/>
 
@@ -869,53 +871,159 @@ The system uses heading detection (H1/H2/H3) from PyMuPDF parsing, supplemented 
 <img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png" width="100%" />
 </div>
 
+## ⚖️ Comparison with RAG Architectures
+
+| Architecture | Strength | Weakness | When It Fails |
+|:---|:---|:---|:---|
+| **BM25 only** | Fast exact keyword match | No semantic understanding | Conceptual queries, paraphrased questions |
+| **MiniLM only** (Vector) | Semantic understanding, handles paraphrases | Misses exact technical terms | Keyword-specific queries, abbreviations |
+| **MiniLM + BM25 + RRF** (Hybrid) | Captures both semantic + lexical signals | Higher latency (~66ms vs <1ms) | Heavy concurrent workloads |
+
+### Measured Performance (Dataset A)
+
+| Architecture | Recall@5 | MRR | Semantic Sim | Hallucination | Latency |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| BM25 only | 0.655 | 0.800 | 0.570 | **8.0%** | 0.2ms |
+| MiniLM only | 0.700 | 0.781 | **0.642** | 2.0% | 0.1ms |
+| **Hybrid** | **0.720** | **0.793** | 0.599 | **2.0%** | 66.4ms |
+
+**Why hybrid improves recall**: RRF fusion combines both ranking signals. When a keyword query like "LEGB rule" doesn't match well semantically, BM25 catches it. When a conceptual query like "why does the GIL exist" needs meaning, MiniLM catches it.
+
+**Why BM25 alone increases hallucination**: BM25 matches keywords without understanding context. A chunk containing the right words but wrong meaning gets ranked high, leading to 4× more hallucination (8% vs 2%).
+
+<br/>
+
+## 📉 Tradeoffs in Hybrid Retrieval
+
+The hybrid system optimizes **retrieval coverage**, not embedding similarity. This creates a measurable tradeoff:
+
+| Metric | MiniLM Only | Hybrid | Direction |
+|:---|:---:|:---:|:---:|
+| Recall@5 | 0.700 | **0.720** | ↑ better |
+| Semantic Sim | **0.642** | 0.599 | ↓ expected drop |
+| Hallucination | 2.0% | 2.0% | → same |
+| Coverage | 49.7% | **50.4%** | ↑ better |
+
+**Why semantic similarity drops slightly**: BM25 introduces keyword-matched chunks that may not be the closest in embedding space but contain relevant factual content. This improves recall and coverage but slightly reduces the average embedding similarity score.
+
+**Conclusion**: The small similarity drop (-0.043) is an expected consequence of prioritizing retrieval coverage. Overall answer quality improves because the system finds more relevant chunks, even if they aren't the most semantically similar.
+
+<br/>
+
+## 🌐 Generalization Analysis
+
+### Cross-Domain Performance
+
+| Metric | Dataset A (Python) | Dataset B (AI/ML) | Consistent? |
+|:---|:---:|:---:|:---:|
+| Recall@5 | 0.720 | 0.889 | ✅ |
+| Semantic Sim | 0.599 | 0.692 | ✅ |
+| Answer Accuracy | 82.0% | 83.3% | ✅ |
+| Trust (high-conf) | 95.7% | 94.1% | ✅ |
+| Hallucination | 2.0% | 0.0% | ✅ |
+
+**Analysis**: Results are consistent across two different domains (programming vs AI/ML theory). Both datasets show ~95% confidence calibration, ~82% answer accuracy, and low hallucination rates.
+
+**Honest scope**: Dataset B has higher recall (0.889 vs 0.720) likely because its document has shorter, more focused chunks (21 vs 75). This makes retrieval easier, not necessarily better. Cross-domain generalization is partially supported — larger-scale testing across more domains and document types is needed for stronger claims.
+
+<br/>
+
 ## 🔬 Evaluation Integrity
 
-### Ground Truth
+### Datasets
 
-Each of the 50 non-adversarial queries (Dataset A) is manually mapped to specific chunk IDs by inspecting document content. These mappings are **independent of system output** — they define which chunks _should_ be retrieved, not which chunks _were_ retrieved. Dataset B (20 queries) uses semantic similarity as a proxy since manual labeling is not yet complete.
+| Dataset | Domain | Queries | Labeled Queries | Ground Truth |
+|:---|:---|:---:|:---:|:---|
+| **A** (fully labeled) | Python programming | 60 | 50 | Manual chunk-ID mapping |
+| **B** (partially labeled) | AI/ML fundamentals | 20 | 18 | Manual chunk-ID mapping |
 
-### Methodology
+### Ground Truth Independence
 
-1. **3 systems tested**: BM25-only, Vector-only, Hybrid (FAISS+BM25+RRF)
-2. **2 datasets**: Python textbook (60 queries) + AI/ML notes (20 queries)
-3. **4 query types**: factual, conceptual, multi-hop, adversarial
-4. **Independent GT**: Manual chunk-ID mappings, not system self-reference
-5. **Reproducible**: Single command regenerates all metrics
+All chunk-ID mappings were created by inspecting document content and manually identifying which chunks should be retrieved for each query. These mappings are **independent of system output** — they define which chunks _should_ be retrieved, not which chunks _were_ retrieved.
 
 ### Failure Analysis
 
-| Category | Count | Example |
+| Category | Count | Root Cause |
 |:---|:---:|:---|
-| Retrieval miss | 5 | Gold chunk not in top-5 |
-| False positive | 3 | Adversarial query not rejected |
-| Hallucination risk | 2 | Low similarity + low coverage |
+| Retrieval miss | 5 | Gold chunk not in top-5 (embedding similarity too low) |
+| False positive | 3 | Adversarial query not rejected (score > 0.25 threshold) |
+| Hallucination risk | 2 | Retrieved chunk has low similarity + low coverage |
 
-Full details: `evaluation/reports/failures.md`
+Full details with per-query examples: `evaluation/reports/failures.md`
 
-### Generalization & Limitations
+### Known Limitations
 
 | Limitation | Impact | Mitigation |
 |:---|:---|:---|
-| Small dataset (80 queries total) | Insufficient for statistical significance | Report exact counts, not just percentages |
-| Two domains only | Cross-domain generalization partially tested | AI/ML dataset shows similar semantic similarity (0.69 vs 0.60) |
-| No LLM answer quality metrics | Only retrieval quality measured | Semantic similarity to expected answer used as proxy |
-| MiniLM-L6-v2 (384-dim) | Smaller embedding model | Adequate for educational content; larger models may improve |
-| Adversarial threshold (0.25) | 30% false positive rate | Threshold is tunable; stricter values reduce false positives |
-| Hybrid latency overhead (~74ms) | 370× slower than vector-only | Acceptable for interactive use; sub-100ms p50 |
+| Small dataset (80 queries) | Insufficient for statistical significance | Report exact counts alongside percentages |
+| Two domains only | Generalization partially tested | Both show ~95% trust calibration |
+| MiniLM-L6-v2 (384-dim) | Smaller embedding model | Adequate for educational content |
+| Adversarial threshold (0.25) | 30% false positive rate | Threshold is configurable |
+| No BM25 index for Dataset B | Can't test BM25-only on Dataset B | Noted transparently in results |
+| Hybrid latency (~66ms) | ~330× slower than vector-only | Sub-100ms, acceptable for interactive use |
 
 ### Reproducibility
 
 ```bash
 cd backend
-python evaluation/run_evaluation.py   # 3 systems × 2 datasets, ~3 min
+python evaluation/run_evaluation.py   # Ablation × 2 datasets, ~3 min
 # Outputs:
-#   evaluation/reports/metrics.json      — all metrics (3 systems, 2 datasets)
+#   evaluation/reports/metrics.json      — all metrics
 #   evaluation/reports/comparison.csv    — system comparison table
 #   evaluation/reports/failures.md       — categorized failure analysis
 #   evaluation/reports/trust_formula.md  — confidence formula + calibration
 #   evaluation/logs/run.json             — per-query execution logs
 ```
+
+<br/>
+
+## 💬 Common Questions & Answers
+
+<details>
+<summary><strong>Q1: Why is the improvement only ~3-5%?</strong></summary>
+
+The MiniLM vector baseline is already strong (Recall@5 = 0.700). At high baselines, each percentage point of improvement is harder to achieve. The hybrid system's gain comes from edge-case queries where exact keyword matching helps — these are the queries that would fail with vector-only search.
+
+</details>
+
+<details>
+<summary><strong>Q2: Why does semantic similarity decrease in hybrid mode?</strong></summary>
+
+Hybrid retrieval prioritizes **coverage** over **embedding closeness**. BM25 introduces keyword-matched chunks that may not be the closest in embedding space but contain factually relevant content. The small drop (0.642 → 0.599) is expected — recall improves because the system finds more correct chunks, even if they score slightly lower on cosine similarity.
+
+</details>
+
+<details>
+<summary><strong>Q3: How does this generalize to other domains?</strong></summary>
+
+Tested on 2 datasets (Python textbook + AI/ML notes). Both show consistent results: ~95% confidence calibration, ~82% answer accuracy, <2% hallucination. The AI/ML dataset has higher recall (0.889 vs 0.720) due to shorter chunks. Larger-scale testing across more domains is needed for stronger generalization claims.
+
+</details>
+
+<details>
+<summary><strong>Q4: How do you evaluate answer correctness?</strong></summary>
+
+Four complementary metrics: (1) **Recall@k** measures whether correct chunks are retrieved, (2) **Semantic similarity** compares retrieved text to expected answers, (3) **Key term coverage** checks if important terms appear in results, (4) **Hallucination rate** flags answers with low similarity AND low coverage.
+
+</details>
+
+<details>
+<summary><strong>Q5: Why not just use vector search?</strong></summary>
+
+Vector search misses exact keywords. A query like "LEGB rule" may not match semantically if the embedding doesn't capture the acronym. BM25 catches these through direct keyword matching. The hybrid system recovers ~3 additional correct chunks per 100 queries that vector-only misses.
+
+</details>
+
+<details>
+<summary><strong>Q6: What are the system's limitations?</strong></summary>
+
+- **Small evaluation scale**: 80 queries across 2 datasets — insufficient for statistical significance claims
+- **No large-scale load testing**: Hybrid latency (~66ms) measured locally, not under concurrent load
+- **Single embedding model**: MiniLM-L6-v2 (384-dim) — larger models may improve results
+- **No distributed architecture**: Single-server deployment only
+- **LLM dependency**: Answer generation requires external Sarvam API; retrieval works offline
+
+</details>
 
 <br/>
 

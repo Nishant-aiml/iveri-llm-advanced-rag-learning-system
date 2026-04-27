@@ -19,7 +19,7 @@
       "confidence": 0.961,
       "level": "high",
       "correct": true,
-      "latency": 92.4
+      "latency": 51.5
     },
     {
       "id": "F02",
@@ -40,7 +40,7 @@
       "confidence": 0.873,
       "level": "high",
       "correct": true,
-      "latency": 68.6
+      "latency": 46.1
     },
     {
       "id": "F03",
@@ -61,7 +61,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 73.9
+      "latency": 55.6
     },
     {
       "id": "F04",
@@ -82,7 +82,7 @@
       "confidence": 0.844,
       "level": "high",
       "correct": true,
-      "latency": 93.8
+      "latency": 68.5
     },
     {
       "id": "F05",
@@ -103,7 +103,7 @@
       "confidence": 0.961,
       "level": "high",
       "correct": true,
-      "latency": 88.0
+      "latency": 64.8
     },
     {
       "id": "F06",
@@ -124,7 +124,7 @@
       "confidence": 0.961,
       "level": "high",
       "correct": true,
-      "latency": 101.5
+      "latency": 70.0
     },
     {
       "id": "F07",
@@ -145,7 +145,7 @@
       "confidence": 0.632,
       "level": "medium",
       "correct": true,
-      "latency": 79.4
+      "latency": 70.5
     },
     {
       "id": "F08",
@@ -166,7 +166,7 @@
       "confidence": 0.825,
       "level": "high",
       "correct": true,
-      "latency": 56.1
+      "latency": 65.4
     },
     {
       "id": "F09",
@@ -187,7 +187,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 113.2
+      "latency": 85.2
     },
     {
       "id": "F10",
@@ -196,7 +196,7 @@
       "hybrid_ids": [
         "c_8a69e4135a24",
         "c_d8c0703fd0e1",
-        "c_b8adc2e73bf3"
+        "c_b380c1ac25e1"
       ],
       "vector_ids": [
         "c_8a69e4135a24",
@@ -205,10 +205,10 @@
       ],
       "semantic_sim": 0.5634,
       "coverage": 0.667,
-      "confidence": 0.873,
+      "confidence": 0.773,
       "level": "high",
       "correct": true,
-      "latency": 73.7
+      "latency": 86.4
     },
     {
       "id": "F11",
@@ -217,7 +217,7 @@
       "hybrid_ids": [
         "c_5c284b0d92ec",
         "c_cc85062c89c2",
-        "c_ada4f094fa36"
+        "c_dc4c132ada07"
       ],
       "vector_ids": [
         "c_ada4f094fa36",
@@ -225,11 +225,11 @@
         "c_ba93f31ca99b"
       ],
       "semantic_sim": 0.1664,
-      "coverage": 0.333,
-      "confidence": 0.677,
+      "coverage": 0.667,
+      "confidence": 0.577,
       "level": "medium",
       "correct": true,
-      "latency": 79.7
+      "latency": 51.8
     },
     {
       "id": "F12",
@@ -250,7 +250,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 73.1
+      "latency": 64.5
     },
     {
       "id": "F13",
@@ -259,7 +259,7 @@
       "hybrid_ids": [
         "c_2c071b5b9408",
         "c_289a9189d17b",
-        "c_c0549b0e58d7"
+        "c_d8c0703fd0e1"
       ],
       "vector_ids": [
         "c_c0549b0e58d7",
@@ -267,11 +267,11 @@
         "c_bbdacbc3d31a"
       ],
       "semantic_sim": 0.3432,
-      "coverage": 0.5,
-      "confidence": 0.694,
+      "coverage": 0.25,
+      "confidence": 0.594,
       "level": "medium",
       "correct": true,
-      "latency": 62.5
+      "latency": 63.1
     },
     {
       "id": "F14",
@@ -292,7 +292,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 51.1
+      "latency": 56.8
     },
     {
       "id": "F15",
@@ -313,7 +313,7 @@
       "confidence": 0.73,
       "level": "high",
       "correct": true,
-      "latency": 72.1
+      "latency": 49.7
     },
     {
       "id": "F16",
@@ -334,7 +334,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 65.2
+      "latency": 89.1
     },
     {
       "id": "F17",
@@ -355,7 +355,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 69.4
+      "latency": 67.8
     },
     {
       "id": "F18",
@@ -376,7 +376,7 @@
       "confidence": 0.74,
       "level": "high",
       "correct": false,
-      "latency": 62.0
+      "latency": 52.9
     },
     {
       "id": "F19",
@@ -397,7 +397,7 @@
       "confidence": 0.761,
       "level": "high",
       "correct": true,
-      "latency": 63.7
+      "latency": 68.0
     },
     {
       "id": "F20",
@@ -418,7 +418,7 @@
       "confidence": 0.852,
       "level": "high",
       "correct": true,
-      "latency": 68.1
+      "latency": 52.5
     },
     {
       "id": "C01",
@@ -439,7 +439,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": false,
-      "latency": 63.5
+      "latency": 75.0
     },
     {
       "id": "C02",
@@ -460,7 +460,7 @@
       "confidence": 0.761,
       "level": "high",
       "correct": true,
-      "latency": 58.1
+      "latency": 48.9
     },
     {
       "id": "C03",
@@ -481,7 +481,7 @@
       "confidence": 0.844,
       "level": "high",
       "correct": true,
-      "latency": 75.1
+      "latency": 60.5
     },
     {
       "id": "C04",
@@ -502,7 +502,7 @@
       "confidence": 0.708,
       "level": "high",
       "correct": true,
-      "latency": 67.4
+      "latency": 75.1
     },
     {
       "id": "C05",
@@ -523,7 +523,7 @@
       "confidence": 0.873,
       "level": "high",
       "correct": true,
-      "latency": 51.6
+      "latency": 85.9
     },
     {
       "id": "C06",
@@ -544,7 +544,7 @@
       "confidence": 0.873,
       "level": "high",
       "correct": true,
-      "latency": 69.4
+      "latency": 55.4
     },
     {
       "id": "C07",
@@ -565,7 +565,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 56.2
+      "latency": 60.0
     },
     {
       "id": "C08",
@@ -586,7 +586,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 74.3
+      "latency": 81.9
     },
     {
       "id": "C09",
@@ -607,7 +607,7 @@
       "confidence": 0.773,
       "level": "high",
       "correct": true,
-      "latency": 65.9
+      "latency": 75.3
     },
     {
       "id": "C10",
@@ -628,7 +628,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 66.8
+      "latency": 48.2
     },
     {
       "id": "C11",
@@ -649,7 +649,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 82.0
+      "latency": 73.5
     },
     {
       "id": "C12",
@@ -670,7 +670,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 97.4
+      "latency": 57.2
     },
     {
       "id": "C13",
@@ -691,7 +691,7 @@
       "confidence": 0.961,
       "level": "high",
       "correct": true,
-      "latency": 80.5
+      "latency": 50.9
     },
     {
       "id": "C14",
@@ -712,7 +712,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 69.6
+      "latency": 180.5
     },
     {
       "id": "C15",
@@ -733,7 +733,7 @@
       "confidence": 0.873,
       "level": "high",
       "correct": true,
-      "latency": 98.4
+      "latency": 88.4
     },
     {
       "id": "C16",
@@ -754,7 +754,7 @@
       "confidence": 0.952,
       "level": "high",
       "correct": true,
-      "latency": 65.5
+      "latency": 65.8
     },
     {
       "id": "C17",
@@ -775,7 +775,7 @@
       "confidence": 0.752,
       "level": "high",
       "correct": true,
-      "latency": 88.2
+      "latency": 61.1
     },
     {
       "id": "C18",
@@ -796,7 +796,7 @@
       "confidence": 0.736,
       "level": "high",
       "correct": true,
-      "latency": 72.4
+      "latency": 57.4
     },
     {
       "id": "C19",
@@ -817,7 +817,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 60.0
+      "latency": 62.0
     },
     {
       "id": "C20",
@@ -838,7 +838,7 @@
       "confidence": 0.736,
       "level": "high",
       "correct": true,
-      "latency": 86.3
+      "latency": 74.9
     },
     {
       "id": "M01",
@@ -859,7 +859,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 95.6
+      "latency": 67.2
     },
     {
       "id": "M02",
@@ -880,7 +880,7 @@
       "confidence": 0.761,
       "level": "high",
       "correct": true,
-      "latency": 63.6
+      "latency": 63.5
     },
     {
       "id": "M03",
@@ -901,7 +901,7 @@
       "confidence": 0.952,
       "level": "high",
       "correct": true,
-      "latency": 110.2
+      "latency": 100.9
     },
     {
       "id": "M04",
@@ -922,7 +922,7 @@
       "confidence": 0.752,
       "level": "high",
       "correct": true,
-      "latency": 69.2
+      "latency": 69.7
     },
     {
       "id": "M05",
@@ -943,7 +943,7 @@
       "confidence": 0.861,
       "level": "high",
       "correct": true,
-      "latency": 83.2
+      "latency": 70.9
     },
     {
       "id": "M06",
@@ -964,7 +964,7 @@
       "confidence": 0.761,
       "level": "high",
       "correct": true,
-      "latency": 76.4
+      "latency": 82.4
     },
     {
       "id": "M07",
@@ -985,15 +985,15 @@
       "confidence": 0.873,
       "level": "high",
       "correct": true,
-      "latency": 61.5
+      "latency": 74.4
     },
     {
       "id": "M08",
       "query": "How does the execution model affect the behavior of generators when combined with exception handling?",
       "type": "multi-hop",
       "hybrid_ids": [
-        "c_b493bbcf8aa7",
         "c_e8adb0cd837c",
+        "c_b493bbcf8aa7",
         "c_ada4f094fa36"
       ],
       "vector_ids": [
@@ -1001,12 +1001,12 @@
         "c_8b74381372c0",
         "c_ada4f094fa36"
       ],
-      "semantic_sim": 0.4899,
+      "semantic_sim": 0.3379,
       "coverage": 0.6,
       "confidence": 0.823,
       "level": "high",
       "correct": true,
-      "latency": 92.5
+      "latency": 76.6
     },
     {
       "id": "M09",
@@ -1027,7 +1027,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 64.5
+      "latency": 77.2
     },
     {
       "id": "M10",
@@ -1048,7 +1048,7 @@
       "confidence": 0.973,
       "level": "high",
       "correct": true,
-      "latency": 75.3
+      "latency": 85.6
     },
     {
       "id": "A01",
@@ -1069,7 +1069,7 @@
       "confidence": 0.344,
       "level": "low",
       "correct": true,
-      "latency": 71.6
+      "latency": 59.3
     },
     {
       "id": "A02",
@@ -1090,7 +1090,7 @@
       "confidence": 0.597,
       "level": "medium",
       "correct": false,
-      "latency": 84.6
+      "latency": 69.9
     },
     {
       "id": "A03",
@@ -1111,7 +1111,7 @@
       "confidence": 0.35,
       "level": "low",
       "correct": true,
-      "latency": 63.0
+      "latency": 63.7
     },
     {
       "id": "A04",
@@ -1120,7 +1120,7 @@
       "hybrid_ids": [
         "c_88cb9df37e0e",
         "c_1786c6e7c6b5",
-        "c_bbbcc3794f4b"
+        "c_4d1cb3b03136"
       ],
       "vector_ids": [
         "c_88cb9df37e0e",
@@ -1129,10 +1129,10 @@
       ],
       "semantic_sim": 0,
       "coverage": 0.4,
-      "confidence": 0.49,
+      "confidence": 0.59,
       "level": "medium",
       "correct": false,
-      "latency": 53.8
+      "latency": 67.3
     },
     {
       "id": "A05",
@@ -1140,8 +1140,8 @@
       "type": "adversarial",
       "hybrid_ids": [
         "c_bbbcc3794f4b",
-        "c_1786c6e7c6b5",
-        "c_1885dd7ad9ed"
+        "c_1885dd7ad9ed",
+        "c_1786c6e7c6b5"
       ],
       "vector_ids": [
         "c_1885dd7ad9ed",
@@ -1153,7 +1153,7 @@
       "confidence": 0.42,
       "level": "medium",
       "correct": true,
-      "latency": 88.4
+      "latency": 66.4
     },
     {
       "id": "A06",
@@ -1161,8 +1161,8 @@
       "type": "adversarial",
       "hybrid_ids": [
         "c_bbbcc3794f4b",
-        "c_1786c6e7c6b5",
-        "c_ba93f31ca99b"
+        "c_ba93f31ca99b",
+        "c_1786c6e7c6b5"
       ],
       "vector_ids": [
         "c_bbbcc3794f4b",
@@ -1174,7 +1174,7 @@
       "confidence": 0.53,
       "level": "medium",
       "correct": true,
-      "latency": 66.2
+      "latency": 68.3
     },
     {
       "id": "A07",
@@ -1183,7 +1183,7 @@
       "hybrid_ids": [
         "c_bbbcc3794f4b",
         "c_601d5c3a7412",
-        "c_1786c6e7c6b5"
+        "c_fe15346dde2d"
       ],
       "vector_ids": [
         "c_fe15346dde2d",
@@ -1192,10 +1192,10 @@
       ],
       "semantic_sim": 0,
       "coverage": 0.4,
-      "confidence": 0.458,
+      "confidence": 0.558,
       "level": "medium",
       "correct": true,
-      "latency": 102.0
+      "latency": 83.6
     },
     {
       "id": "A08",
@@ -1216,16 +1216,16 @@
       "confidence": 0.521,
       "level": "medium",
       "correct": true,
-      "latency": 67.1
+      "latency": 71.6
     },
     {
       "id": "A09",
       "query": "How do you train a GPT model from scratch?",
       "type": "adversarial",
       "hybrid_ids": [
-        "c_f745092d9032",
         "c_6d7f19fba0d4",
-        "c_1786c6e7c6b5"
+        "c_f745092d9032",
+        "c_ba93f31ca99b"
       ],
       "vector_ids": [
         "c_f745092d9032",
@@ -1234,10 +1234,10 @@
       ],
       "semantic_sim": 0,
       "coverage": 0.4,
-      "confidence": 0.437,
+      "confidence": 0.537,
       "level": "medium",
       "correct": false,
-      "latency": 66.1
+      "latency": 56.4
     },
     {
       "id": "A10",
@@ -1258,7 +1258,7 @@
       "confidence": 0.36,
       "level": "low",
       "correct": true,
-      "latency": 71.8
+      "latency": 52.2
     }
   ],
   "b": [
@@ -1280,8 +1280,8 @@
       "coverage": 1.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 61.0
+      "correct": true,
+      "latency": 55.6
     },
     {
       "id": "B_F02",
@@ -1301,8 +1301,8 @@
       "coverage": 1.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 66.5
+      "correct": true,
+      "latency": 60.3
     },
     {
       "id": "B_F03",
@@ -1322,8 +1322,8 @@
       "coverage": 0.333,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 59.4
+      "correct": true,
+      "latency": 58.3
     },
     {
       "id": "B_F04",
@@ -1343,8 +1343,8 @@
       "coverage": 0.667,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 88.7
+      "correct": true,
+      "latency": 54.9
     },
     {
       "id": "B_F05",
@@ -1364,8 +1364,8 @@
       "coverage": 0.5,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 53.1
+      "correct": true,
+      "latency": 75.6
     },
     {
       "id": "B_F06",
@@ -1385,8 +1385,8 @@
       "coverage": 1.0,
       "confidence": 0.736,
       "level": "high",
-      "correct": false,
-      "latency": 58.3
+      "correct": true,
+      "latency": 59.0
     },
     {
       "id": "B_F07",
@@ -1406,8 +1406,8 @@
       "coverage": 0.5,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 82.0
+      "correct": true,
+      "latency": 54.4
     },
     {
       "id": "B_F08",
@@ -1427,8 +1427,8 @@
       "coverage": 0.5,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 51.9
+      "correct": true,
+      "latency": 66.8
     },
     {
       "id": "B_F09",
@@ -1448,8 +1448,8 @@
       "coverage": 0.5,
       "confidence": 0.736,
       "level": "high",
-      "correct": false,
-      "latency": 64.7
+      "correct": true,
+      "latency": 59.4
     },
     {
       "id": "B_F10",
@@ -1469,8 +1469,8 @@
       "coverage": 0.0,
       "confidence": 0.663,
       "level": "medium",
-      "correct": false,
-      "latency": 82.6
+      "correct": true,
+      "latency": 65.5
     },
     {
       "id": "B_C01",
@@ -1490,8 +1490,8 @@
       "coverage": 0.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 84.2
+      "correct": true,
+      "latency": 128.3
     },
     {
       "id": "B_C02",
@@ -1511,8 +1511,8 @@
       "coverage": 0.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 83.8
+      "correct": true,
+      "latency": 50.3
     },
     {
       "id": "B_C03",
@@ -1532,8 +1532,8 @@
       "coverage": 0.25,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 58.3
+      "correct": true,
+      "latency": 74.1
     },
     {
       "id": "B_C04",
@@ -1553,8 +1553,8 @@
       "coverage": 0.0,
       "confidence": 0.799,
       "level": "high",
-      "correct": false,
-      "latency": 84.8
+      "correct": true,
+      "latency": 62.7
     },
     {
       "id": "B_C05",
@@ -1575,7 +1575,7 @@
       "confidence": 0.836,
       "level": "high",
       "correct": false,
-      "latency": 73.4
+      "latency": 46.6
     },
     {
       "id": "B_M01",
@@ -1595,8 +1595,8 @@
       "coverage": 0.8,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 61.7
+      "correct": true,
+      "latency": 106.0
     },
     {
       "id": "B_M02",
@@ -1616,8 +1616,8 @@
       "coverage": 1.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 111.8
+      "correct": true,
+      "latency": 68.1
     },
     {
       "id": "B_M03",
@@ -1637,8 +1637,8 @@
       "coverage": 0.0,
       "confidence": 0.836,
       "level": "high",
-      "correct": false,
-      "latency": 60.0
+      "correct": true,
+      "latency": 58.9
     },
     {
       "id": "B_A01",
@@ -1659,7 +1659,7 @@
       "confidence": 0.547,
       "level": "medium",
       "correct": true,
-      "latency": 60.3
+      "latency": 61.6
     },
     {
       "id": "B_A02",
@@ -1680,7 +1680,7 @@
       "confidence": 0.387,
       "level": "low",
       "correct": true,
-      "latency": 71.6
+      "latency": 165.9
     }
   ]
 }
