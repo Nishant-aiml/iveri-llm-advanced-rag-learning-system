@@ -1,7 +1,11 @@
 <div align="center">
 
-<!-- Animated Header -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=220&section=header&text=IVERI%20LLM&fontSize=80&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=Intelligent%20AI%20Learning%20%26%20Student%20Monitoring%20System&descAlignY=55&descSize=18&descColor=d1d5db" width="100%" />
+<!-- Header Banner -->
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=220&section=header&text=IVERI%20LLM&fontSize=80&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=Intelligent%20AI%20Learning%20%26%20Student%20Monitoring%20System&descAlignY=55&descSize=18&descColor=d1d5db" width="100%" alt="IVERI LLM - Intelligent AI Learning & Student Monitoring System" />
+
+<!-- Fallback title if banner doesn't load -->
+<!-- # 🧠 IVERI LLM -->
+<!-- **Intelligent AI Learning & Student Monitoring System** -->
 
 <!-- Badges -->
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
@@ -1043,6 +1047,32 @@ Vector search misses exact keywords. A query like "LEGB rule" may not match sema
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
+- ✅ **Commercial use** permitted
+- ✅ **Modification** permitted
+- ✅ **Distribution** permitted
+- ✅ **Private use** permitted
+- ℹ️ **Attribution** required (include copyright notice)
+
+### Dependency Licenses
+
+| Dependency | License | MIT-Compatible? |
+|:---|:---|:---:|
+| FastAPI | MIT | ✅ |
+| uvicorn | BSD-3-Clause | ✅ |
+| FAISS (faiss-cpu) | MIT | ✅ |
+| sentence-transformers | Apache 2.0 | ✅ |
+| SQLAlchemy | MIT | ✅ |
+| httpx | BSD-3-Clause | ✅ |
+| openpyxl | MIT | ✅ |
+| NLTK | Apache 2.0 | ✅ |
+| aiofiles | Apache 2.0 | ✅ |
+| python-dotenv | BSD-3-Clause | ✅ |
+| python-multipart | Apache 2.0 | ✅ |
+| **PyMuPDF** | **AGPL 3.0** / Commercial | ⚠️ See note |
+| **pymupdf4llm** | **AGPL 3.0** / Commercial | ⚠️ See note |
+
+> ⚠️ **PyMuPDF note**: PyMuPDF and pymupdf4llm are dual-licensed under AGPL 3.0 or Artifex Commercial License. This project uses PyMuPDF as a **runtime dependency** (not embedded or modified). For commercial deployments, either comply with AGPL 3.0 requirements (source disclosure) or obtain a commercial license from Artifex. All other dependencies are permissive (MIT / Apache 2.0 / BSD) with no GPL conflicts.
+
 <br/>
 
 ## 👨‍💻 Author
@@ -1069,6 +1099,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <br/>
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=120&section=footer" width="100%" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a5f,50:2563eb,100:7c3aed&height=120&section=footer" width="100%" alt="" />
 
 </div>
