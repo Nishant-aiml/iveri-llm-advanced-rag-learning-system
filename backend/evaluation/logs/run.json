@@ -1,0 +1,1922 @@
+[
+  {
+    "id": "F01",
+    "query": "What type of programming language is Python?",
+    "type": "factual",
+    "expected_answer": "Python is a high-level, interpreted, dynamically typed programming language that supports multiple paradigms including procedural, object-oriented, an",
+    "top_chunks": [
+      "c_7ecfd4d5f417",
+      "c_bbdacbc3d31a",
+      "c_289a9189d17b"
+    ],
+    "top_chunk_texts": [
+      "1. Python as a Programming Paradigm\n\nPython is a multi-paradigm programming lang",
+      "1. Introduction to Python\n\nPython is a high-level, interpreted, dynamically type",
+      "Python is a multi-paradigm programming language that supports procedural, object"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08392,
+      0.08013,
+      0.03571,
+      0.03571
+    ],
+    "semantic_similarity": 0.8487,
+    "key_term_coverage": 1.0,
+    "top_vector_score": 0.7922,
+    "latency_embed_ms": 20.7,
+    "latency_hybrid_ms": 82.4,
+    "latency_total_ms": 103.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F02",
+    "query": "What are mutable objects in Python?",
+    "type": "factual",
+    "expected_answer": "Mutable objects in Python are list, dict, and set. They can be changed after creation.",
+    "top_chunks": [
+      "c_b380c1ac25e1",
+      "c_6d7f19fba0d4",
+      "c_a9a432bcb4ed"
+    ],
+    "top_chunk_texts": [
+      "Mutable Objects:\n\n- list, dict, set",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "4. Mutability and Its Implications\n\nMutability determines whether an object's va"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08013,
+      0.06971,
+      0.06944,
+      0.06513
+    ],
+    "semantic_similarity": 0.8114,
+    "key_term_coverage": 1.0,
+    "top_vector_score": 0.7191,
+    "latency_embed_ms": 20.2,
+    "latency_hybrid_ms": 82.4,
+    "latency_total_ms": 102.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F03",
+    "query": "What are immutable types in Python?",
+    "type": "factual",
+    "expected_answer": "Immutable types in Python include int, float, str, tuple, and frozenset. They cannot be modified after creation.",
+    "top_chunks": [
+      "c_a3ee357aa024",
+      "c_330946c99287",
+      "c_fe15346dde2d"
+    ],
+    "top_chunk_texts": [
+      "3.1 Immutable Types\n\n- int - float - str - tuple",
+      "Immutable Objects:\n\n- int, float, str, tuple",
+      "3.2 Mutable Types\n\n- list - dict - set"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08117,
+      0.06944,
+      0.03846,
+      0.03846
+    ],
+    "semantic_similarity": 0.7702,
+    "key_term_coverage": 0.833,
+    "top_vector_score": 0.6704,
+    "latency_embed_ms": 37.8,
+    "latency_hybrid_ms": 131.9,
+    "latency_total_ms": 169.8,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F04",
+    "query": "What is the time complexity of dictionary lookup in Python?",
+    "type": "factual",
+    "expected_answer": "Dictionary lookup in Python has an average time complexity of O(1) because dictionaries are implemented as hash tables.",
+    "top_chunks": [
+      "c_1885dd7ad9ed",
+      "c_f7f6a75df9ca",
+      "c_286f0a06a89e"
+    ],
+    "top_chunk_texts": [
+      "Dictionaries\n\n- Hash tables - Average O(1) lookup",
+      "9. Hashing and Dictionary Internals\n\nPython dictionaries use hashing to map keys",
+      "Operation Time Complexity\n\nList append O(1) List search O(n) Dict access O(1) av"
+    ],
+    "similarity_scores": [
+      0.08117,
+      0.07738,
+      0.06944,
+      0.06787,
+      0.06066
+    ],
+    "semantic_similarity": 0.782,
+    "key_term_coverage": 1.0,
+    "top_vector_score": 0.6303,
+    "latency_embed_ms": 24.4,
+    "latency_hybrid_ms": 68.3,
+    "latency_total_ms": 92.7,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F05",
+    "query": "What is the LEGB rule in Python?",
+    "type": "factual",
+    "expected_answer": "The LEGB rule defines the order of scope resolution in Python: Local, Enclosing, Global, Built-in.",
+    "top_chunks": [
+      "c_f98efd97da26",
+      "c_247b99b9f807",
+      "c_2c071b5b9408"
+    ],
+    "top_chunk_texts": [
+      "LEGB Rule:\n\n- Local - Enclosing - Global - Built-in",
+      "LEGB Rule:\n\n- Local - Enclosing - Global - Built-in",
+      "In Python:\n\n- functions can be assigned to variables - passed as arguments - ret"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08712,
+      0.06624,
+      0.03846,
+      0.03571
+    ],
+    "semantic_similarity": 0.5892,
+    "key_term_coverage": 0.8,
+    "top_vector_score": 0.5687,
+    "latency_embed_ms": 21.6,
+    "latency_hybrid_ms": 68.8,
+    "latency_total_ms": 90.4,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F06",
+    "query": "What is recursion in Python?",
+    "type": "factual",
+    "expected_answer": "Recursion is a function calling itself. Example: factorial function where factorial(n) returns n * factorial(n-1) with base case n == 0 returning 1.",
+    "top_chunks": [
+      "c_42b5d0777bac",
+      "c_163bc99577a9",
+      "c_c04916c1c3b0"
+    ],
+    "top_chunk_texts": [
+      "Important Points:\n\n- Each recursive call consumes memory - Python has a recursio",
+      "7. Recursion\n\n``` A function calling itself. Example: def factorial(n): if n == ",
+      "7. Recursion and Stack Behavior\n\nRecursion uses the call stack to maintain funct"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08392,
+      0.08013,
+      0.03571,
+      0.03571
+    ],
+    "semantic_similarity": 0.4686,
+    "key_term_coverage": 0.667,
+    "top_vector_score": 0.7358,
+    "latency_embed_ms": 19.8,
+    "latency_hybrid_ms": 70.2,
+    "latency_total_ms": 90.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F07",
+    "query": "What does MRO stand for in Python?",
+    "type": "factual",
+    "expected_answer": "MRO stands for Method Resolution Order. It defines the order in which base classes are searched when looking for a method.",
+    "top_chunks": [
+      "c_6d7f19fba0d4",
+      "c_5c284b0d92ec",
+      "c_289a9189d17b"
+    ],
+    "top_chunk_texts": [
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "Python programs do not execute directly as machine code. Instead, they follow a ",
+      "Python is a multi-paradigm programming language that supports procedural, object"
+    ],
+    "similarity_scores": [
+      0.07738,
+      0.06111,
+      0.05719,
+      0.04545,
+      0.04545
+    ],
+    "semantic_similarity": 0.2035,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.6078,
+    "latency_embed_ms": 28.4,
+    "latency_hybrid_ms": 82.6,
+    "latency_total_ms": 111.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F08",
+    "query": "What are the four core OOP concepts in Python?",
+    "type": "factual",
+    "expected_answer": "The four core OOP concepts are Encapsulation, Inheritance, Polymorphism, and Abstraction.",
+    "top_chunks": [
+      "c_7ecfd4d5f417",
+      "c_289a9189d17b",
+      "c_601d5c3a7412"
+    ],
+    "top_chunk_texts": [
+      "1. Python as a Programming Paradigm\n\nPython is a multi-paradigm programming lang",
+      "Python is a multi-paradigm programming language that supports procedural, object",
+      "Key Concepts:\n\n- Every variable is a reference to an object - Objects contain: -"
+    ],
+    "similarity_scores": [
+      0.075,
+      0.07418,
+      0.06066,
+      0.05903,
+      0.04545
+    ],
+    "semantic_similarity": 0.2929,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.5964,
+    "latency_embed_ms": 29.3,
+    "latency_hybrid_ms": 99.0,
+    "latency_total_ms": 128.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F09",
+    "query": "What is the Global Interpreter Lock in Python?",
+    "type": "factual",
+    "expected_answer": "The GIL (Global Interpreter Lock) is a mutex that prevents multiple threads from executing Python bytecode simultaneously, limiting true parallelism i",
+    "top_chunks": [
+      "c_c8fc3127f857",
+      "c_04b548a90061",
+      "c_6d7f19fba0d4"
+    ],
+    "top_chunk_texts": [
+      "18. Global Interpreter Lock (GIL)\n\nGIL ensures only one thread executes Python b",
+      "Multithreading:\n\n- Limited by Global Interpreter Lock (GIL)",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08712,
+      0.06066,
+      0.03846,
+      0.03846
+    ],
+    "semantic_similarity": 0.8662,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.7745,
+    "latency_embed_ms": 89.9,
+    "latency_hybrid_ms": 184.1,
+    "latency_total_ms": 274.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F10",
+    "query": "What is a list comprehension in Python?",
+    "type": "factual",
+    "expected_answer": "List comprehension is a concise way to create lists using a single line of code with an expression and optional conditions.",
+    "top_chunks": [
+      "c_8a69e4135a24",
+      "c_d8c0703fd0e1",
+      "c_b8adc2e73bf3"
+    ],
+    "top_chunk_texts": [
+      "10. List Comprehension\n\nsquares = [x*x for x in range(10)]",
+      "9. Python Collections\n\nList Ordered, mutable",
+      "Example:\n\na = [1, 2, 3] b = a b.append(4) print(a) Output: [1, 2, 3, 4] Explanat"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.06349,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.5634,
+    "key_term_coverage": 0.667,
+    "top_vector_score": 0.5962,
+    "latency_embed_ms": 29.5,
+    "latency_hybrid_ms": 80.7,
+    "latency_total_ms": 110.2,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F11",
+    "query": "What is a generator in Python?",
+    "type": "factual",
+    "expected_answer": "A generator is a special function that uses yield to produce a sequence of values lazily, one at a time, without storing the entire sequence in memory",
+    "top_chunks": [
+      "c_5c284b0d92ec",
+      "c_cc85062c89c2",
+      "c_ada4f094fa36"
+    ],
+    "top_chunk_texts": [
+      "Python programs do not execute directly as machine code. Instead, they follow a ",
+      "2. Internal Working of Python (Execution Model)\n\nPython programs do not execute ",
+      "11. Generators\n\n``` Generators produce values lazily. def gen(): for i in range("
+    ],
+    "similarity_scores": [
+      0.05903,
+      0.05719,
+      0.04545,
+      0.04545,
+      0.04167
+    ],
+    "semantic_similarity": 0.1582,
+    "key_term_coverage": 0.333,
+    "top_vector_score": 0.6651,
+    "latency_embed_ms": 20.3,
+    "latency_hybrid_ms": 70.0,
+    "latency_total_ms": 90.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F12",
+    "query": "What is exception handling in Python?",
+    "type": "factual",
+    "expected_answer": "Exception handling in Python uses try-except blocks to catch and handle runtime errors gracefully, preventing program crashes.",
+    "top_chunks": [
+      "c_e8adb0cd837c",
+      "c_89f1194d0242",
+      "c_8b74381372c0"
+    ],
+    "top_chunk_texts": [
+      "12. Exception Handling Mechanism\n\nPython uses structured exception handling: try",
+      "12. Exception Handling\n\n``` try: x = 10 / 0 except ZeroDivisionError: print(\"Err",
+      "Deep Concept:\n\nException handling improves robustness but can impact performance"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08013,
+      0.07738,
+      0.03846,
+      0.03571
+    ],
+    "semantic_similarity": 0.7171,
+    "key_term_coverage": 0.667,
+    "top_vector_score": 0.756,
+    "latency_embed_ms": 21.7,
+    "latency_hybrid_ms": 65.3,
+    "latency_total_ms": 87.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F13",
+    "query": "What is a decorator in Python?",
+    "type": "factual",
+    "expected_answer": "A decorator is a function that takes another function as input and extends its behavior without modifying its source code, using the @decorator syntax",
+    "top_chunks": [
+      "c_2c071b5b9408",
+      "c_289a9189d17b",
+      "c_d8c0703fd0e1"
+    ],
+    "top_chunk_texts": [
+      "In Python:\n\n- functions can be assigned to variables - passed as arguments - ret",
+      "Python is a multi-paradigm programming language that supports procedural, object",
+      "9. Python Collections\n\nList Ordered, mutable"
+    ],
+    "similarity_scores": [
+      0.06458,
+      0.06349,
+      0.04545,
+      0.04545,
+      0.04167
+    ],
+    "semantic_similarity": 0.3432,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.7554,
+    "latency_embed_ms": 29.2,
+    "latency_hybrid_ms": 93.0,
+    "latency_total_ms": 122.2,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F14",
+    "query": "What is a lambda function in Python?",
+    "type": "factual",
+    "expected_answer": "A lambda function is an anonymous, single-expression function defined using the lambda keyword.",
+    "top_chunks": [
+      "c_86ef97d2bbf3",
+      "c_163bc99577a9",
+      "c_2c071b5b9408"
+    ],
+    "top_chunk_texts": [
+      "16. Lambda Functions\n\nf = lambda x: x + 1",
+      "7. Recursion\n\n``` A function calling itself. Example: def factorial(n): if n == ",
+      "In Python:\n\n- functions can be assigned to variables - passed as arguments - ret"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.07692,
+      0.04167,
+      0.04167,
+      0.03571
+    ],
+    "semantic_similarity": 0.653,
+    "key_term_coverage": 0.333,
+    "top_vector_score": 0.6316,
+    "latency_embed_ms": 48.8,
+    "latency_hybrid_ms": 75.4,
+    "latency_total_ms": 124.2,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F15",
+    "query": "What are metaclasses in Python?",
+    "type": "factual",
+    "expected_answer": "Metaclasses are classes of classes that define how classes behave. They are part of Python's advanced topics along with context managers and async pro",
+    "top_chunks": [
+      "c_46b68418ea0b",
+      "c_2c071b5b9408",
+      "c_bbdacbc3d31a"
+    ],
+    "top_chunk_texts": [
+      "22. Advanced Concepts\n\n- Closures - Context Managers - Metaclasses",
+      "In Python:\n\n- functions can be assigned to variables - passed as arguments - ret",
+      "1. Introduction to Python\n\nPython is a high-level, interpreted, dynamically type"
+    ],
+    "similarity_scores": [
+      0.0767,
+      0.05719,
+      0.04545,
+      0.04167,
+      0.04167
+    ],
+    "semantic_similarity": 0.4972,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.5076,
+    "latency_embed_ms": 26.0,
+    "latency_hybrid_ms": 56.6,
+    "latency_total_ms": 82.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F16",
+    "query": "What is the difference between shallow copy and deep copy?",
+    "type": "factual",
+    "expected_answer": "A shallow copy creates a new object but references the same nested objects, while a deep copy creates a completely independent copy of the object and ",
+    "top_chunks": [
+      "c_45137df2249f",
+      "c_041eb6f37d44",
+      "c_4d1cb3b03136"
+    ],
+    "top_chunk_texts": [
+      "Shallow Copy\n\n- Copies reference",
+      "Deep Copy\n\n- Copies full object import copy a = [[1, 2], [3, 4]] b = copy.copy(a",
+      "21. Common GATE-Level Pitfalls\n\n- Mutable default arguments - Shallow vs deep co"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07692,
+      0.07143,
+      0.05903
+    ],
+    "semantic_similarity": 0.7038,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.7298,
+    "latency_embed_ms": 21.3,
+    "latency_hybrid_ms": 72.6,
+    "latency_total_ms": 93.9,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F17",
+    "query": "What is the difference between threading and multiprocessing in Python?",
+    "type": "factual",
+    "expected_answer": "Threading shares the same memory space and is limited by the GIL, while multiprocessing uses separate memory spaces and can achieve true parallelism.",
+    "top_chunks": [
+      "c_a9f1b8d0eabd",
+      "c_0c5ad41bf610",
+      "c_10e30c065703"
+    ],
+    "top_chunk_texts": [
+      "Implication:\n\n- CPU-bound tasks \u2192 multiprocessing - I/O-bound tasks \u2192 threading",
+      "Multiprocessing:\n\n- True parallelism",
+      "Feature Threading Multiprocessing\n\nGIL Present Not limiting Speed Limited Faster"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07692,
+      0.05719,
+      0.03571
+    ],
+    "semantic_similarity": 0.6748,
+    "key_term_coverage": 1.0,
+    "top_vector_score": 0.6751,
+    "latency_embed_ms": 25.4,
+    "latency_hybrid_ms": 68.9,
+    "latency_total_ms": 94.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F18",
+    "query": "What happens when you append to a list that is referenced by two variables?",
+    "type": "factual",
+    "expected_answer": "When you append to a list referenced by two variables (a = [1,2,3]; b = a; b.append(4)), both variables reflect the change because lists are mutable a",
+    "top_chunks": [
+      "c_bf66e79ebe4f",
+      "c_94ff0e472607",
+      "c_54b5171e2ea6"
+    ],
+    "top_chunk_texts": [
+      "Lists\n\n- Dynamic arrays - Amortized O(1) append",
+      "Operation Complexity\n\nList append O(1) List insert O(n) Dict lookup O(1) avg Sor",
+      "15. Closures and Late Binding\n\nClosures capture variables, but Python uses late "
+    ],
+    "similarity_scores": [
+      0.08013,
+      0.07879,
+      0.07143,
+      0.05719,
+      0.04545
+    ],
+    "semantic_similarity": 0.4971,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.7066,
+    "latency_embed_ms": 23.4,
+    "latency_hybrid_ms": 86.7,
+    "latency_total_ms": 110.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F19",
+    "query": "What data structure are Python sets based on?",
+    "type": "factual",
+    "expected_answer": "Python sets are implemented using hash tables, similar to dictionaries but storing only keys.",
+    "top_chunks": [
+      "c_6d7f19fba0d4",
+      "c_d8c0703fd0e1",
+      "c_8f957d0fa5b8"
+    ],
+    "top_chunk_texts": [
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "9. Python Collections\n\nList Ordered, mutable",
+      "Sets\n\n- Unique elements - Fast membership testing"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.06349,
+      0.04545,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.4848,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.5193,
+    "latency_embed_ms": 22.8,
+    "latency_hybrid_ms": 82.6,
+    "latency_total_ms": 105.4,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "F20",
+    "query": "What is file handling in Python?",
+    "type": "factual",
+    "expected_answer": "File handling in Python allows reading from and writing to files using built-in functions like open(), read(), write(), and with-statement for automat",
+    "top_chunks": [
+      "c_81f45b6ad4f0",
+      "c_6d7f19fba0d4",
+      "c_cc85062c89c2"
+    ],
+    "top_chunk_texts": [
+      "18. File Handling\n\n``` with open(\"file.txt\", \"r\") as f: data = f.read() ```",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "2. Internal Working of Python (Execution Model)\n\nPython programs do not execute "
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.07323,
+      0.07143,
+      0.06624,
+      0.04167
+    ],
+    "semantic_similarity": 0.6374,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.559,
+    "latency_embed_ms": 28.6,
+    "latency_hybrid_ms": 86.8,
+    "latency_total_ms": 115.4,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C01",
+    "query": "Why is Python called an interpreted language?",
+    "type": "conceptual",
+    "expected_answer": "Python is called interpreted because the source code is executed line-by-line by the Python interpreter at runtime, rather than being compiled to mach",
+    "top_chunks": [
+      "c_bbdacbc3d31a",
+      "c_7ecfd4d5f417",
+      "c_289a9189d17b"
+    ],
+    "top_chunk_texts": [
+      "1. Introduction to Python\n\nPython is a high-level, interpreted, dynamically type",
+      "1. Python as a Programming Paradigm\n\nPython is a multi-paradigm programming lang",
+      "Python is a multi-paradigm programming language that supports procedural, object"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.07738,
+      0.07692,
+      0.05882,
+      0.04167
+    ],
+    "semantic_similarity": 0.6462,
+    "key_term_coverage": 0.667,
+    "top_vector_score": 0.6908,
+    "latency_embed_ms": 28.7,
+    "latency_hybrid_ms": 97.9,
+    "latency_total_ms": 126.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C02",
+    "query": "Why are strings immutable in Python?",
+    "type": "conceptual",
+    "expected_answer": "Strings are immutable in Python for memory efficiency (string interning), thread safety, and to allow them to be used as dictionary keys (hashable). O",
+    "top_chunks": [
+      "c_330946c99287",
+      "c_a3ee357aa024",
+      "c_96c709e891b6"
+    ],
+    "top_chunk_texts": [
+      "Immutable Objects:\n\n- int, float, str, tuple",
+      "3.1 Immutable Types\n\n- int - float - str - tuple",
+      "Tuple\n\nOrdered, immutable Set Unordered, unique elements"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.06787,
+      0.04545,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.3225,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.5023,
+    "latency_embed_ms": 24.0,
+    "latency_hybrid_ms": 86.0,
+    "latency_total_ms": 110.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C03",
+    "query": "How does Python's memory management work?",
+    "type": "conceptual",
+    "expected_answer": "Python uses automatic memory management with reference counting as the primary mechanism and a garbage collector for cyclic references. Objects are al",
+    "top_chunks": [
+      "c_9aada2bb5c3b",
+      "c_60e39b5dba40",
+      "c_6d7f19fba0d4"
+    ],
+    "top_chunk_texts": [
+      "21. Python Memory Management\n\n- Reference counting - Garbage collection",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al"
+    ],
+    "similarity_scores": [
+      0.08117,
+      0.07692,
+      0.0767,
+      0.07108,
+      0.04167
+    ],
+    "semantic_similarity": 0.7467,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.8022,
+    "latency_embed_ms": 19.9,
+    "latency_hybrid_ms": 73.2,
+    "latency_total_ms": 93.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C04",
+    "query": "Why does the GIL exist and what problem does it cause?",
+    "type": "conceptual",
+    "expected_answer": "The GIL exists to protect Python's reference counting mechanism from race conditions in multi-threaded programs. It causes the problem of preventing t",
+    "top_chunks": [
+      "c_04b548a90061",
+      "c_10e30c065703",
+      "c_c8fc3127f857"
+    ],
+    "top_chunk_texts": [
+      "Multithreading:\n\n- Limited by Global Interpreter Lock (GIL)",
+      "Feature Threading Multiprocessing\n\nGIL Present Not limiting Speed Limited Faster",
+      "18. Global Interpreter Lock (GIL)\n\nGIL ensures only one thread executes Python b"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.04545,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.6927,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.3207,
+    "latency_embed_ms": 32.4,
+    "latency_hybrid_ms": 78.0,
+    "latency_total_ms": 110.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C05",
+    "query": "How does variable binding work in Python's memory model?",
+    "type": "conceptual",
+    "expected_answer": "In Python, variables are names (references) that point to objects in memory. Assignment binds a name to an object. Multiple names can reference the sa",
+    "top_chunks": [
+      "c_1edb67b1e656",
+      "c_65afd418a661",
+      "c_6d7f19fba0d4"
+    ],
+    "top_chunk_texts": [
+      "4. Variable Binding and Memory Model\n\nPython uses reference binding , not tradit",
+      "5. Variable Binding and Scope Resolution\n\nPython does not use traditional variab",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07418,
+      0.06787,
+      0.06349
+    ],
+    "semantic_similarity": 0.5689,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.7934,
+    "latency_embed_ms": 21.2,
+    "latency_hybrid_ms": 66.2,
+    "latency_total_ms": 87.4,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C06",
+    "query": "Why should you use generators instead of lists for large datasets?",
+    "type": "conceptual",
+    "expected_answer": "Generators are memory-efficient because they produce values lazily (one at a time using yield) instead of storing the entire sequence in memory. This ",
+    "top_chunks": [
+      "c_ba93f31ca99b",
+      "c_b493bbcf8aa7",
+      "c_ada4f094fa36"
+    ],
+    "top_chunk_texts": [
+      "Insight:\n\nGenerators are preferred for large datasets because they avoid loading",
+      "Generators:\n\n- Use yield - Memory efficient",
+      "11. Generators\n\n``` Generators produce values lazily. def gen(): for i in range("
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07143,
+      0.06624,
+      0.05441
+    ],
+    "semantic_similarity": 0.7564,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.8568,
+    "latency_embed_ms": 23.5,
+    "latency_hybrid_ms": 68.6,
+    "latency_total_ms": 92.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C07",
+    "query": "How does hash collision resolution work in Python dictionaries?",
+    "type": "conceptual",
+    "expected_answer": "Python dictionaries use hash tables with open addressing for collision resolution. When two keys hash to the same index, Python probes for the next av",
+    "top_chunks": [
+      "c_1885dd7ad9ed",
+      "c_f7f6a75df9ca",
+      "c_1786c6e7c6b5"
+    ],
+    "top_chunk_texts": [
+      "Dictionaries\n\n- Hash tables - Average O(1) lookup",
+      "9. Hashing and Dictionary Internals\n\nPython dictionaries use hashing to map keys",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08117,
+      0.07108,
+      0.06111,
+      0.05573
+    ],
+    "semantic_similarity": 0.5743,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.7073,
+    "latency_embed_ms": 24.5,
+    "latency_hybrid_ms": 77.2,
+    "latency_total_ms": 101.7,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C08",
+    "query": "Why is recursion limited in Python and what happens when the limit is exceeded?",
+    "type": "conceptual",
+    "expected_answer": "Python has a default recursion limit (usually 1000) to prevent stack overflow. When exceeded, Python raises a RecursionError. Each recursive call adds",
+    "top_chunks": [
+      "c_42b5d0777bac",
+      "c_163bc99577a9",
+      "c_c04916c1c3b0"
+    ],
+    "top_chunk_texts": [
+      "Important Points:\n\n- Each recursive call consumes memory - Python has a recursio",
+      "7. Recursion\n\n``` A function calling itself. Example: def factorial(n): if n == ",
+      "7. Recursion and Stack Behavior\n\nRecursion uses the call stack to maintain funct"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.075,
+      0.07418,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.7579,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.7326,
+    "latency_embed_ms": 24.3,
+    "latency_hybrid_ms": 82.8,
+    "latency_total_ms": 107.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C09",
+    "query": "How do closures work in Python?",
+    "type": "conceptual",
+    "expected_answer": "Closures are inner functions that capture and remember variables from their enclosing scope even after the outer function has finished executing. They",
+    "top_chunks": [
+      "c_54b5171e2ea6",
+      "c_6d7f19fba0d4",
+      "c_46b68418ea0b"
+    ],
+    "top_chunk_texts": [
+      "15. Closures and Late Binding\n\nClosures capture variables, but Python uses late ",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "22. Advanced Concepts\n\n- Closures - Context Managers - Metaclasses"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.06667,
+      0.06439,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.6306,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.7303,
+    "latency_embed_ms": 25.0,
+    "latency_hybrid_ms": 93.0,
+    "latency_total_ms": 118.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C10",
+    "query": "Why is the difference between mutable and immutable types important?",
+    "type": "conceptual",
+    "expected_answer": "The distinction matters because mutable objects can be changed in-place (causing side effects through shared references), while immutable objects crea",
+    "top_chunks": [
+      "c_a3ee357aa024",
+      "c_fe15346dde2d",
+      "c_330946c99287"
+    ],
+    "top_chunk_texts": [
+      "3.1 Immutable Types\n\n- int - float - str - tuple",
+      "3.2 Mutable Types\n\n- list - dict - set",
+      "Immutable Objects:\n\n- int, float, str, tuple"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.07738,
+      0.07418,
+      0.06111,
+      0.06066
+    ],
+    "semantic_similarity": 0.368,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.5511,
+    "latency_embed_ms": 31.5,
+    "latency_hybrid_ms": 84.9,
+    "latency_total_ms": 116.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C11",
+    "query": "How does Python's execution model work internally?",
+    "type": "conceptual",
+    "expected_answer": "Python source code is first compiled to bytecode (.pyc files), then executed by the Python Virtual Machine (PVM). The PVM interprets bytecode instruct",
+    "top_chunks": [
+      "c_cc85062c89c2",
+      "c_60e39b5dba40",
+      "c_dd76287ced07"
+    ],
+    "top_chunk_texts": [
+      "2. Internal Working of Python (Execution Model)\n\nPython programs do not execute ",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi",
+      "2. Python Execution Model\n\nPython code is executed in the following steps: 1. So"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.07418,
+      0.07292,
+      0.07179,
+      0.06696
+    ],
+    "semantic_similarity": 0.8291,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.6999,
+    "latency_embed_ms": 30.8,
+    "latency_hybrid_ms": 76.1,
+    "latency_total_ms": 106.8,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C12",
+    "query": "Why do decorators use the @syntax and how do they modify functions?",
+    "type": "conceptual",
+    "expected_answer": "The @decorator syntax is syntactic sugar for wrapping a function. Writing @decorator before def func() is equivalent to func = decorator(func). Decora",
+    "top_chunks": [
+      "c_4cbba995df38",
+      "c_c0549b0e58d7",
+      "c_2c071b5b9408"
+    ],
+    "top_chunk_texts": [
+      "16. Decorators (Advanced Concept)\n\nDecorators modify function behavior without c",
+      "19. Decorators\n\nFunctions that modify other functions. ``` def decorator(func): ",
+      "In Python:\n\n- functions can be assigned to variables - passed as arguments - ret"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07692,
+      0.03571,
+      0.03571
+    ],
+    "semantic_similarity": 0.7088,
+    "key_term_coverage": 0.333,
+    "top_vector_score": 0.6118,
+    "latency_embed_ms": 23.0,
+    "latency_hybrid_ms": 80.9,
+    "latency_total_ms": 103.9,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C13",
+    "query": "How does exception handling prevent program crashes?",
+    "type": "conceptual",
+    "expected_answer": "Exception handling uses try-except blocks to catch runtime errors. When an exception occurs in the try block, execution jumps to the matching except b",
+    "top_chunks": [
+      "c_e8adb0cd837c",
+      "c_8b74381372c0",
+      "c_89f1194d0242"
+    ],
+    "top_chunk_texts": [
+      "12. Exception Handling Mechanism\n\nPython uses structured exception handling: try",
+      "Deep Concept:\n\nException handling improves robustness but can impact performance",
+      "12. Exception Handling\n\n``` try: x = 10 / 0 except ZeroDivisionError: print(\"Err"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08117,
+      0.08013,
+      0.0625,
+      0.03846
+    ],
+    "semantic_similarity": 0.5906,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.634,
+    "latency_embed_ms": 22.1,
+    "latency_hybrid_ms": 66.1,
+    "latency_total_ms": 88.2,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C14",
+    "query": "Why is multiprocessing preferred over threading for CPU-bound tasks in Python?",
+    "type": "conceptual",
+    "expected_answer": "Because the GIL prevents true thread parallelism in CPython, multiprocessing creates separate processes with their own GIL, enabling true CPU parallel",
+    "top_chunks": [
+      "c_a9f1b8d0eabd",
+      "c_10e30c065703",
+      "c_0c5ad41bf610"
+    ],
+    "top_chunk_texts": [
+      "Implication:\n\n- CPU-bound tasks \u2192 multiprocessing - I/O-bound tasks \u2192 threading",
+      "Feature Threading Multiprocessing\n\nGIL Present Not limiting Speed Limited Faster",
+      "Multiprocessing:\n\n- True parallelism"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07692,
+      0.03571,
+      0.03571
+    ],
+    "semantic_similarity": 0.6594,
+    "key_term_coverage": 1.0,
+    "top_vector_score": 0.724,
+    "latency_embed_ms": 21.2,
+    "latency_hybrid_ms": 83.7,
+    "latency_total_ms": 105.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C15",
+    "query": "How does Python's scope resolution mechanism work?",
+    "type": "conceptual",
+    "expected_answer": "Python resolves variable names using the LEGB rule: it first checks the Local scope, then Enclosing function scopes, then Global scope, and finally Bu",
+    "top_chunks": [
+      "c_65afd418a661",
+      "c_c8588286ab34",
+      "c_60e39b5dba40"
+    ],
+    "top_chunk_texts": [
+      "5. Variable Binding and Scope Resolution\n\nPython does not use traditional variab",
+      "Method Resolution Order (MRO)\n\nPython uses C3 linearization to resolve method lo",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08013,
+      0.06696,
+      0.06458,
+      0.06349
+    ],
+    "semantic_similarity": 0.7073,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.6301,
+    "latency_embed_ms": 24.4,
+    "latency_hybrid_ms": 75.5,
+    "latency_total_ms": 99.9,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C16",
+    "query": "What is the role of functional programming in Python?",
+    "type": "conceptual",
+    "expected_answer": "Python supports functional programming through features like lambda functions, map/filter/reduce, closures, and higher-order functions. Functions are ",
+    "top_chunks": [
+      "c_bbdacbc3d31a",
+      "c_d154c587830d",
+      "c_7ecfd4d5f417"
+    ],
+    "top_chunk_texts": [
+      "1. Introduction to Python\n\nPython is a high-level, interpreted, dynamically type",
+      "14. Functional Programming Concepts\n\nPython supports: - map() - filter() - reduc",
+      "1. Python as a Programming Paradigm\n\nPython is a multi-paradigm programming lang"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.08333,
+      0.07418,
+      0.06905,
+      0.04545
+    ],
+    "semantic_similarity": 0.6527,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.6043,
+    "latency_embed_ms": 24.1,
+    "latency_hybrid_ms": 81.5,
+    "latency_total_ms": 105.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C17",
+    "query": "How does Python handle memory for immutable vs mutable objects differently?",
+    "type": "conceptual",
+    "expected_answer": "For immutable objects like small integers and strings, Python uses interning (caching) to reuse objects. For mutable objects, each creation produces a",
+    "top_chunks": [
+      "c_6d7f19fba0d4",
+      "c_330946c99287",
+      "c_b380c1ac25e1"
+    ],
+    "top_chunk_texts": [
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "Immutable Objects:\n\n- int, float, str, tuple",
+      "Mutable Objects:\n\n- list, dict, set"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.07323,
+      0.07292,
+      0.06275,
+      0.04167
+    ],
+    "semantic_similarity": 0.5757,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.632,
+    "latency_embed_ms": 25.7,
+    "latency_hybrid_ms": 73.0,
+    "latency_total_ms": 98.7,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C18",
+    "query": "Why is understanding iterators and generators important for efficient Python code?",
+    "type": "conceptual",
+    "expected_answer": "Iterators and generators enable lazy evaluation, processing one item at a time without loading entire sequences into memory. This is essential for han",
+    "top_chunks": [
+      "c_b493bbcf8aa7",
+      "c_ada4f094fa36",
+      "c_55ff91cba487"
+    ],
+    "top_chunk_texts": [
+      "Generators:\n\n- Use yield - Memory efficient",
+      "11. Generators\n\n``` Generators produce values lazily. def gen(): for i in range(",
+      "Iterators:\n\n- Implement iter () and next ()"
+    ],
+    "similarity_scores": [
+      0.07879,
+      0.07292,
+      0.07292,
+      0.06787,
+      0.04545
+    ],
+    "semantic_similarity": 0.6061,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.5704,
+    "latency_embed_ms": 28.8,
+    "latency_hybrid_ms": 72.0,
+    "latency_total_ms": 100.8,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C19",
+    "query": "How does the Method Resolution Order affect multiple inheritance?",
+    "type": "conceptual",
+    "expected_answer": "MRO uses the C3 linearization algorithm to determine the order in which base classes are searched for methods. This prevents the diamond problem and e",
+    "top_chunks": [
+      "c_62d796bd0cac",
+      "c_c8588286ab34",
+      "c_ec46c94c0ddd"
+    ],
+    "top_chunk_texts": [
+      "14. Method Resolution Order (MRO)\n\nDefines order in which base classes are searc",
+      "Method Resolution Order (MRO)\n\nPython uses C3 linearization to resolve method lo",
+      "Concepts:\n\n- Encapsulation - Inheritance - Polymorphism - Abstraction"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07418,
+      0.07418,
+      0.03333
+    ],
+    "semantic_similarity": 0.7921,
+    "key_term_coverage": 0.5,
+    "top_vector_score": 0.6275,
+    "latency_embed_ms": 36.5,
+    "latency_hybrid_ms": 63.4,
+    "latency_total_ms": 99.9,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "C20",
+    "query": "What are the common GATE-level pitfalls in Python programming?",
+    "type": "conceptual",
+    "expected_answer": "Common GATE-level pitfalls include confusing mutable default arguments, shallow vs deep copy behavior, variable scoping issues with closures, integer ",
+    "top_chunks": [
+      "c_4d1cb3b03136",
+      "c_7ecfd4d5f417",
+      "c_289a9189d17b"
+    ],
+    "top_chunk_texts": [
+      "21. Common GATE-Level Pitfalls\n\n- Mutable default arguments - Shallow vs deep co",
+      "1. Python as a Programming Paradigm\n\nPython is a multi-paradigm programming lang",
+      "Python is a multi-paradigm programming language that supports procedural, object"
+    ],
+    "similarity_scores": [
+      0.07879,
+      0.07418,
+      0.07418,
+      0.07292,
+      0.04545
+    ],
+    "semantic_similarity": 0.7933,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.544,
+    "latency_embed_ms": 19.7,
+    "latency_hybrid_ms": 66.9,
+    "latency_total_ms": 86.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M01",
+    "query": "If Python uses reference counting for memory management and strings are immutable, how does this affect string concatenation performance?",
+    "type": "multi-hop",
+    "expected_answer": "Since strings are immutable, each concatenation creates a new string object. With reference counting, the old string's reference count drops and may b",
+    "top_chunks": [
+      "c_9aada2bb5c3b",
+      "c_752e7bf0b413",
+      "c_1edb67b1e656"
+    ],
+    "top_chunk_texts": [
+      "21. Python Memory Management\n\n- Reference counting - Garbage collection",
+      "19. Memory Management\n\nPython uses: - Reference counting - Garbage collection",
+      "4. Variable Binding and Memory Model\n\nPython uses reference binding , not tradit"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08712,
+      0.06905,
+      0.06478,
+      0.03846
+    ],
+    "semantic_similarity": 0.3859,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.5633,
+    "latency_embed_ms": 24.8,
+    "latency_hybrid_ms": 83.5,
+    "latency_total_ms": 108.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M02",
+    "query": "How do the GIL and Python's memory model interact when using multithreading with mutable shared data?",
+    "type": "multi-hop",
+    "expected_answer": "The GIL ensures only one thread executes Python bytecode at a time, providing some protection. However, mutable shared data can still have race condit",
+    "top_chunks": [
+      "c_04b548a90061",
+      "c_6d7f19fba0d4",
+      "c_60e39b5dba40"
+    ],
+    "top_chunk_texts": [
+      "Multithreading:\n\n- Limited by Global Interpreter Lock (GIL)",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.07738,
+      0.06111,
+      0.04545,
+      0.03846
+    ],
+    "semantic_similarity": 0.7111,
+    "key_term_coverage": 0.2,
+    "top_vector_score": 0.6206,
+    "latency_embed_ms": 26.4,
+    "latency_hybrid_ms": 91.3,
+    "latency_total_ms": 117.7,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M03",
+    "query": "How do closures and the LEGB rule interact when a nested function modifies an enclosing variable?",
+    "type": "multi-hop",
+    "expected_answer": "Closures capture variables from the enclosing scope (E in LEGB). To modify an enclosing variable, you must use the 'nonlocal' keyword, otherwise Pytho",
+    "top_chunks": [
+      "c_f98efd97da26",
+      "c_8edfe7c26f68",
+      "c_247b99b9f807"
+    ],
+    "top_chunk_texts": [
+      "LEGB Rule:\n\n- Local - Enclosing - Global - Built-in",
+      "Deep Insight:\n\nClosures retain access to variables from enclosing scopes even af",
+      "LEGB Rule:\n\n- Local - Enclosing - Global - Built-in"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.08392,
+      0.08333,
+      0.06275,
+      0.03571
+    ],
+    "semantic_similarity": 0.5444,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.6894,
+    "latency_embed_ms": 30.8,
+    "latency_hybrid_ms": 93.8,
+    "latency_total_ms": 124.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M04",
+    "query": "Why does using a mutable default argument in a function definition combined with Python's variable binding cause unexpected behavior?",
+    "type": "multi-hop",
+    "expected_answer": "Default arguments are evaluated once at function definition time, not at each call. A mutable default (like a list) is shared across all calls. Combin",
+    "top_chunks": [
+      "c_65afd418a661",
+      "c_4d1cb3b03136",
+      "c_1edb67b1e656"
+    ],
+    "top_chunk_texts": [
+      "5. Variable Binding and Scope Resolution\n\nPython does not use traditional variab",
+      "21. Common GATE-Level Pitfalls\n\n- Mutable default arguments - Shallow vs deep co",
+      "4. Variable Binding and Memory Model\n\nPython uses reference binding , not tradit"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.07179,
+      0.07143,
+      0.05719,
+      0.04545
+    ],
+    "semantic_similarity": 0.4008,
+    "key_term_coverage": 0.25,
+    "top_vector_score": 0.6391,
+    "latency_embed_ms": 20.7,
+    "latency_hybrid_ms": 75.4,
+    "latency_total_ms": 96.1,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M05",
+    "query": "How does the combination of hash tables in dictionaries and immutability requirements for keys relate to Python's type system?",
+    "type": "multi-hop",
+    "expected_answer": "Dictionary keys must be hashable, which requires immutability. This is why lists (mutable) cannot be dictionary keys but tuples (immutable) can. The h",
+    "top_chunks": [
+      "c_1885dd7ad9ed",
+      "c_f7f6a75df9ca",
+      "c_1786c6e7c6b5"
+    ],
+    "top_chunk_texts": [
+      "Dictionaries\n\n- Hash tables - Average O(1) lookup",
+      "9. Hashing and Dictionary Internals\n\nPython dictionaries use hashing to map keys",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally"
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.08392,
+      0.07738,
+      0.06111,
+      0.03846
+    ],
+    "semantic_similarity": 0.5998,
+    "key_term_coverage": 0.8,
+    "top_vector_score": 0.7236,
+    "latency_embed_ms": 29.0,
+    "latency_hybrid_ms": 88.6,
+    "latency_total_ms": 117.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M06",
+    "query": "How do decorators interact with closures and Python's first-class function model?",
+    "type": "multi-hop",
+    "expected_answer": "Decorators are higher-order functions that take a function as input and return a new function. The wrapper function inside a decorator is a closure th",
+    "top_chunks": [
+      "c_4cbba995df38",
+      "c_46b68418ea0b",
+      "c_54b5171e2ea6"
+    ],
+    "top_chunk_texts": [
+      "16. Decorators (Advanced Concept)\n\nDecorators modify function behavior without c",
+      "22. Advanced Concepts\n\n- Closures - Context Managers - Metaclasses",
+      "15. Closures and Late Binding\n\nClosures capture variables, but Python uses late "
+    ],
+    "similarity_scores": [
+      0.08712,
+      0.06667,
+      0.06349,
+      0.06349,
+      0.06275
+    ],
+    "semantic_similarity": 0.7074,
+    "key_term_coverage": 0.4,
+    "top_vector_score": 0.7947,
+    "latency_embed_ms": 25.4,
+    "latency_hybrid_ms": 75.1,
+    "latency_total_ms": 100.5,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M07",
+    "query": "How does Python's garbage collector handle circular references that reference counting alone cannot detect?",
+    "type": "multi-hop",
+    "expected_answer": "Reference counting fails for circular references (A references B, B references A). Python's garbage collector uses a generational approach to detect a",
+    "top_chunks": [
+      "c_9aada2bb5c3b",
+      "c_752e7bf0b413",
+      "c_60e39b5dba40"
+    ],
+    "top_chunk_texts": [
+      "21. Python Memory Management\n\n- Reference counting - Garbage collection",
+      "19. Memory Management\n\nPython uses: - Reference counting - Garbage collection",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07418,
+      0.06971,
+      0.05719
+    ],
+    "semantic_similarity": 0.7659,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.7557,
+    "latency_embed_ms": 23.5,
+    "latency_hybrid_ms": 70.9,
+    "latency_total_ms": 94.3,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M08",
+    "query": "How does the execution model affect the behavior of generators when combined with exception handling?",
+    "type": "multi-hop",
+    "expected_answer": "Generators pause execution at yield and resume later. If an exception occurs in the generator body, it propagates to the caller. The generator's try-f",
+    "top_chunks": [
+      "c_b493bbcf8aa7",
+      "c_e8adb0cd837c",
+      "c_ada4f094fa36"
+    ],
+    "top_chunk_texts": [
+      "Generators:\n\n- Use yield - Memory efficient",
+      "12. Exception Handling Mechanism\n\nPython uses structured exception handling: try",
+      "11. Generators\n\n``` Generators produce values lazily. def gen(): for i in range("
+    ],
+    "similarity_scores": [
+      0.08117,
+      0.08117,
+      0.07692,
+      0.07108,
+      0.05903
+    ],
+    "semantic_similarity": 0.4899,
+    "key_term_coverage": 0.6,
+    "top_vector_score": 0.4748,
+    "latency_embed_ms": 29.4,
+    "latency_hybrid_ms": 80.6,
+    "latency_total_ms": 110.0,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M09",
+    "query": "How does the MRO algorithm resolve method conflicts in diamond inheritance with Python's OOP model?",
+    "type": "multi-hop",
+    "expected_answer": "Python uses C3 linearization to resolve diamond inheritance. The algorithm ensures that child classes come before parents, and the order respects the ",
+    "top_chunks": [
+      "c_c8588286ab34",
+      "c_62d796bd0cac",
+      "c_60e39b5dba40"
+    ],
+    "top_chunk_texts": [
+      "Method Resolution Order (MRO)\n\nPython uses C3 linearization to resolve method lo",
+      "14. Method Resolution Order (MRO)\n\nDefines order in which base classes are searc",
+      "Python's flexibility comes from its dynamic typing and runtime behavior, but thi"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.07738,
+      0.06624,
+      0.05965,
+      0.05506
+    ],
+    "semantic_similarity": 0.5963,
+    "key_term_coverage": 0.75,
+    "top_vector_score": 0.5968,
+    "latency_embed_ms": 19.5,
+    "latency_hybrid_ms": 67.1,
+    "latency_total_ms": 86.6,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "M10",
+    "query": "Why does shallow copying a list of lists create problems with mutability, and how does deep copy solve this?",
+    "type": "multi-hop",
+    "expected_answer": "Shallow copy creates a new outer list but inner lists remain references to the original objects. Modifying an inner list in the copy affects the origi",
+    "top_chunks": [
+      "c_45137df2249f",
+      "c_4d1cb3b03136",
+      "c_041eb6f37d44"
+    ],
+    "top_chunk_texts": [
+      "Shallow Copy\n\n- Copies reference",
+      "21. Common GATE-Level Pitfalls\n\n- Mutable default arguments - Shallow vs deep co",
+      "Deep Copy\n\n- Copies full object import copy a = [[1, 2], [3, 4]] b = copy.copy(a"
+    ],
+    "similarity_scores": [
+      0.09091,
+      0.08333,
+      0.07692,
+      0.07143,
+      0.06275
+    ],
+    "semantic_similarity": 0.7001,
+    "key_term_coverage": 0.4,
+    "top_vector_score": 0.6422,
+    "latency_embed_ms": 23.4,
+    "latency_hybrid_ms": 69.1,
+    "latency_total_ms": 92.5,
+    "is_adversarial": false,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "A01",
+    "query": "What is the capital of France?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_9383179e4a51",
+      "c_1786c6e7c6b5",
+      "c_bbbcc3794f4b"
+    ],
+    "top_chunk_texts": [
+      "Example:\n\n``` def outer(): def inner(): return \"Hello\" return inner ```",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally",
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor"
+    ],
+    "similarity_scores": [
+      0.04545,
+      0.04545,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.1349,
+    "latency_embed_ms": 21.0,
+    "latency_hybrid_ms": 58.2,
+    "latency_total_ms": 79.2,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A02",
+    "query": "How does React handle state management?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_9aada2bb5c3b",
+      "c_bbbcc3794f4b",
+      "c_c04916c1c3b0"
+    ],
+    "top_chunk_texts": [
+      "21. Python Memory Management\n\n- Reference counting - Garbage collection",
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor",
+      "7. Recursion and Stack Behavior\n\nRecursion uses the call stack to maintain funct"
+    ],
+    "similarity_scores": [
+      0.08117,
+      0.06667,
+      0.04545,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.3166,
+    "latency_embed_ms": 23.1,
+    "latency_hybrid_ms": 63.0,
+    "latency_total_ms": 86.0,
+    "is_adversarial": true,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "A03",
+    "query": "What is the current price of Bitcoin?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_bbbcc3794f4b",
+      "c_601d5c3a7412",
+      "c_361067e7af07"
+    ],
+    "top_chunk_texts": [
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor",
+      "Key Concepts:\n\n- Every variable is a reference to an object - Objects contain: -",
+      "Dictionary\n\nKey-value pairs"
+    ],
+    "similarity_scores": [
+      0.075,
+      0.06119,
+      0.04545,
+      0.04545,
+      0.04167
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.1562,
+    "latency_embed_ms": 27.7,
+    "latency_hybrid_ms": 71.5,
+    "latency_total_ms": 99.2,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A04",
+    "query": "Explain quantum computing error correction.",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_88cb9df37e0e",
+      "c_1786c6e7c6b5",
+      "c_4d1cb3b03136"
+    ],
+    "top_chunk_texts": [
+      "Example Insight:\n\n<!-- formula-not-decoded --> Both x and y point to the same me",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally",
+      "21. Common GATE-Level Pitfalls\n\n- Mutable default arguments - Shallow vs deep co"
+    ],
+    "similarity_scores": [
+      0.04545,
+      0.04545,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.3174,
+    "latency_embed_ms": 23.1,
+    "latency_hybrid_ms": 73.8,
+    "latency_total_ms": 96.9,
+    "is_adversarial": true,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "A05",
+    "query": "What SQL query finds the top 5 customers by revenue?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_bbbcc3794f4b",
+      "c_1885dd7ad9ed",
+      "c_1786c6e7c6b5"
+    ],
+    "top_chunk_texts": [
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor",
+      "Dictionaries\n\n- Hash tables - Average O(1) lookup",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally"
+    ],
+    "similarity_scores": [
+      0.07108,
+      0.04545,
+      0.04545,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.1336,
+    "latency_embed_ms": 35.7,
+    "latency_hybrid_ms": 112.8,
+    "latency_total_ms": 148.5,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A06",
+    "query": "How do you configure Kubernetes pod autoscaling?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_bbbcc3794f4b",
+      "c_ba93f31ca99b",
+      "c_1786c6e7c6b5"
+    ],
+    "top_chunk_texts": [
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor",
+      "Insight:\n\nGenerators are preferred for large datasets because they avoid loading",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally"
+    ],
+    "similarity_scores": [
+      0.08013,
+      0.04545,
+      0.04545,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.1118,
+    "latency_embed_ms": 31.3,
+    "latency_hybrid_ms": 84.7,
+    "latency_total_ms": 116.0,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A07",
+    "query": "What are the symptoms of Type 2 diabetes?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_bbbcc3794f4b",
+      "c_601d5c3a7412",
+      "c_fe15346dde2d"
+    ],
+    "top_chunk_texts": [
+      "Key characteristics:\n\n- Interpreted execution - Dynamic typing - Automatic memor",
+      "Key Concepts:\n\n- Every variable is a reference to an object - Objects contain: -",
+      "3.2 Mutable Types\n\n- list - dict - set"
+    ],
+    "similarity_scores": [
+      0.08392,
+      0.07323,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.1323,
+    "latency_embed_ms": 29.2,
+    "latency_hybrid_ms": 96.5,
+    "latency_total_ms": 125.7,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A08",
+    "query": "Explain the theory of general relativity.",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_4516b87d09c0",
+      "c_601d5c3a7412",
+      "c_1786c6e7c6b5"
+    ],
+    "top_chunk_texts": [
+      "23. Extended Theory Section (Dense Content for RAG)\n\nPython's flexibility comes ",
+      "Key Concepts:\n\n- Every variable is a reference to an object - Objects contain: -",
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally"
+    ],
+    "similarity_scores": [
+      0.07879,
+      0.07738,
+      0.06667,
+      0.04545,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.2305,
+    "latency_embed_ms": 20.4,
+    "latency_hybrid_ms": 59.1,
+    "latency_total_ms": 79.5,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  },
+  {
+    "id": "A09",
+    "query": "How do you train a GPT model from scratch?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_f745092d9032",
+      "c_6d7f19fba0d4",
+      "c_ba93f31ca99b"
+    ],
+    "top_chunk_texts": [
+      "20. Advanced Topics\n\n- Metaclasses - Context Managers - Async programming",
+      "3. Python Memory Model and Object System\n\nPython uses a private heap to store al",
+      "Insight:\n\nGenerators are preferred for large datasets because they avoid loading"
+    ],
+    "similarity_scores": [
+      0.04545,
+      0.04545,
+      0.04167,
+      0.04167,
+      0.03846
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.2505,
+    "latency_embed_ms": 26.6,
+    "latency_hybrid_ms": 65.8,
+    "latency_total_ms": 92.3,
+    "is_adversarial": true,
+    "low_confidence": false,
+    "correctly_refused": false
+  },
+  {
+    "id": "A10",
+    "query": "What is the recipe for chocolate cake?",
+    "type": "adversarial",
+    "expected_answer": "NOT_IN_DOCUMENT",
+    "top_chunks": [
+      "c_1786c6e7c6b5",
+      "c_601d5c3a7412",
+      "c_ec46c94c0ddd"
+    ],
+    "top_chunk_texts": [
+      "Key Properties:\n\n- Keys must be immutable - Hash collisions handled internally",
+      "Key Concepts:\n\n- Every variable is a reference to an object - Objects contain: -",
+      "Concepts:\n\n- Encapsulation - Inheritance - Polymorphism - Abstraction"
+    ],
+    "similarity_scores": [
+      0.06629,
+      0.06624,
+      0.04545,
+      0.04167,
+      0.04167
+    ],
+    "semantic_similarity": 0.0,
+    "key_term_coverage": 0.0,
+    "top_vector_score": 0.0758,
+    "latency_embed_ms": 23.2,
+    "latency_hybrid_ms": 72.0,
+    "latency_total_ms": 95.2,
+    "is_adversarial": true,
+    "low_confidence": true,
+    "correctly_refused": true
+  }
+]

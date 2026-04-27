@@ -1,0 +1,38 @@
+{
+  "retrieval": {
+    "hybrid_recall_at_3": 0.6,
+    "hybrid_recall_at_5": 1.0,
+    "hybrid_mrr": 1.0,
+    "baseline_recall_at_3": 0.524,
+    "baseline_recall_at_5": 0.724,
+    "baseline_mrr": 0.98
+  },
+  "answer_quality": {
+    "avg_semantic_similarity": 0.6089,
+    "factual_similarity": 0.5781,
+    "conceptual_similarity": 0.649,
+    "multihop_similarity": 0.5902,
+    "key_term_coverage": 0.514,
+    "high_coverage_pct": 60.0,
+    "hallucination_rate_pct": 4.0
+  },
+  "adversarial": {
+    "not_found_accuracy_pct": 70.0,
+    "correct_refusals": 7,
+    "total_adversarial": 10
+  },
+  "performance": {
+    "avg_latency_ms": 107.0,
+    "p50_latency_ms": 102.6,
+    "p95_latency_ms": 148.5,
+    "min_latency_ms": 79.2,
+    "max_latency_ms": 274.0
+  },
+  "dataset": {
+    "total_queries": 60,
+    "factual": 20,
+    "conceptual": 20,
+    "multi_hop": 10,
+    "adversarial": 10
+  }
+}

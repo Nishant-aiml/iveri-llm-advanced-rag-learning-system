@@ -1,0 +1,3 @@
+System,Recall@3,Recall@5,MRR
+Baseline (Vector-Only),0.524,0.724,0.98
+Hybrid (FAISS+BM25+RRF),0.6,1.0,1.0
