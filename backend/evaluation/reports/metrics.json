@@ -1,38 +1,94 @@
 {
-  "retrieval": {
-    "hybrid_recall_at_3": 0.6,
-    "hybrid_recall_at_5": 1.0,
-    "hybrid_mrr": 1.0,
-    "baseline_recall_at_3": 0.524,
-    "baseline_recall_at_5": 0.724,
-    "baseline_mrr": 0.98
-  },
-  "answer_quality": {
-    "avg_semantic_similarity": 0.6089,
-    "factual_similarity": 0.5781,
-    "conceptual_similarity": 0.649,
-    "multihop_similarity": 0.5902,
-    "key_term_coverage": 0.514,
-    "high_coverage_pct": 60.0,
-    "hallucination_rate_pct": 4.0
-  },
-  "adversarial": {
-    "not_found_accuracy_pct": 70.0,
-    "correct_refusals": 7,
-    "total_adversarial": 10
-  },
-  "performance": {
-    "avg_latency_ms": 107.0,
-    "p50_latency_ms": 102.6,
-    "p95_latency_ms": 148.5,
-    "min_latency_ms": 79.2,
-    "max_latency_ms": 274.0
-  },
-  "dataset": {
-    "total_queries": 60,
-    "factual": 20,
-    "conceptual": 20,
-    "multi_hop": 10,
-    "adversarial": 10
+  "timestamp": "20260427_214603",
+  "datasets": [
+    {
+      "dataset": "Python Textbook",
+      "doc_id": "doc_11c024ccf162",
+      "queries": 60,
+      "retrieval": {
+        "baseline_recall3": 0.5933,
+        "baseline_recall5": 0.7,
+        "baseline_mrr": 0.7807,
+        "hybrid_recall3": 0.615,
+        "hybrid_recall5": 0.73,
+        "hybrid_mrr": 0.7907
+      },
+      "quality": {
+        "avg_semantic_similarity": 0.6082,
+        "factual_sim": 0.5744,
+        "conceptual_sim": 0.649,
+        "multihop_sim": 0.5943,
+        "key_term_coverage": 0.519,
+        "hallucination_rate": 4.0
+      },
+      "adversarial": {
+        "total": 10,
+        "correct_refusals": 7,
+        "accuracy": 70.0
+      },
+      "confidence_calibration": {
+        "high_conf_total": 47,
+        "high_conf_correct": 44,
+        "high_conf_accuracy": 93.6,
+        "low_conf_total": 0,
+        "low_conf_incorrect": 0
+      },
+      "latency": {
+        "avg_embed_ms": 22.6,
+        "avg_vector_ms": 0.1,
+        "avg_hybrid_ms": 73.5,
+        "avg_total_ms": 96.1,
+        "p50_ms": 87.5,
+        "p95_ms": 166.4,
+        "note": "Excludes LLM generation (API-dependent). Retrieval-only pipeline."
+      }
+    },
+    {
+      "dataset": "Document B (doc_1ad23bd9b7af)",
+      "doc_id": "doc_1ad23bd9b7af",
+      "queries": 30,
+      "retrieval": {
+        "baseline_recall3": 0,
+        "baseline_recall5": 0,
+        "baseline_mrr": 0,
+        "hybrid_recall3": 0,
+        "hybrid_recall5": 0,
+        "hybrid_mrr": 0
+      },
+      "quality": {
+        "avg_semantic_similarity": 0.5876,
+        "factual_sim": 0.5781,
+        "conceptual_sim": 0.6064,
+        "multihop_sim": 0,
+        "key_term_coverage": 0.5684,
+        "hallucination_rate": 6.7
+      },
+      "adversarial": {
+        "total": 0,
+        "correct_refusals": 0,
+        "accuracy": 0.0
+      },
+      "confidence_calibration": {
+        "high_conf_total": 27,
+        "high_conf_correct": 0,
+        "high_conf_accuracy": 0.0,
+        "low_conf_total": 0,
+        "low_conf_incorrect": 0
+      },
+      "latency": {
+        "avg_embed_ms": 21.1,
+        "avg_vector_ms": 0.1,
+        "avg_hybrid_ms": 65.0,
+        "avg_total_ms": 86.1,
+        "p50_ms": 82.2,
+        "p95_ms": 119.5,
+        "note": "Excludes LLM generation (API-dependent). Retrieval-only pipeline."
+      }
+    }
+  ],
+  "cross_dataset_average": {
+    "hybrid_recall3": 0.3075,
+    "hybrid_recall5": 0.365,
+    "avg_latency_ms": 91.1
   }
 }

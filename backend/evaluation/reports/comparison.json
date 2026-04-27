@@ -1,16 +1,13 @@
 {
   "baseline": {
-    "recall_at_3": 0.524,
-    "recall_at_5": 0.724,
-    "mrr": 0.98
+    "recall3": 0.5933,
+    "recall5": 0.7,
+    "mrr": 0.7807
   },
   "hybrid": {
-    "recall_at_3": 0.6,
-    "recall_at_5": 1.0,
-    "mrr": 1.0
+    "recall3": 0.615,
+    "recall5": 0.73,
+    "mrr": 0.7907
   },
-  "improvement": {
-    "recall_at_3_pct": 14.5,
-    "recall_at_5_pct": 38.1
-  }
+  "ground_truth": "independent_manual_chunk_mapping"
 }

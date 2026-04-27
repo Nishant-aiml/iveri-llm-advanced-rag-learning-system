@@ -1,27 +1,45 @@
-Category,Metric,Value
-retrieval,hybrid_recall_at_3,0.6
-retrieval,hybrid_recall_at_5,1.0
-retrieval,hybrid_mrr,1.0
-retrieval,baseline_recall_at_3,0.524
-retrieval,baseline_recall_at_5,0.724
-retrieval,baseline_mrr,0.98
-answer_quality,avg_semantic_similarity,0.6089
-answer_quality,factual_similarity,0.5781
-answer_quality,conceptual_similarity,0.649
-answer_quality,multihop_similarity,0.5902
-answer_quality,key_term_coverage,0.514
-answer_quality,high_coverage_pct,60.0
-answer_quality,hallucination_rate_pct,4.0
-adversarial,not_found_accuracy_pct,70.0
-adversarial,correct_refusals,7
-adversarial,total_adversarial,10
-performance,avg_latency_ms,107.0
-performance,p50_latency_ms,102.6
-performance,p95_latency_ms,148.5
-performance,min_latency_ms,79.2
-performance,max_latency_ms,274.0
-dataset,total_queries,60
-dataset,factual,20
-dataset,conceptual,20
-dataset,multi_hop,10
-dataset,adversarial,10
+Dataset,Metric,Value
+Python Textbook,retrieval.baseline_recall3,0.5933
+Python Textbook,retrieval.baseline_recall5,0.7
+Python Textbook,retrieval.baseline_mrr,0.7807
+Python Textbook,retrieval.hybrid_recall3,0.615
+Python Textbook,retrieval.hybrid_recall5,0.73
+Python Textbook,retrieval.hybrid_mrr,0.7907
+Python Textbook,quality.avg_semantic_similarity,0.6082
+Python Textbook,quality.factual_sim,0.5744
+Python Textbook,quality.conceptual_sim,0.649
+Python Textbook,quality.multihop_sim,0.5943
+Python Textbook,quality.key_term_coverage,0.519
+Python Textbook,quality.hallucination_rate,4.0
+Python Textbook,adversarial.total,10
+Python Textbook,adversarial.correct_refusals,7
+Python Textbook,adversarial.accuracy,70.0
+Python Textbook,latency.avg_embed_ms,22.6
+Python Textbook,latency.avg_vector_ms,0.1
+Python Textbook,latency.avg_hybrid_ms,73.5
+Python Textbook,latency.avg_total_ms,96.1
+Python Textbook,latency.p50_ms,87.5
+Python Textbook,latency.p95_ms,166.4
+Python Textbook,latency.note,Excludes LLM generation (API-dependent). Retrieval-only pipeline.
+Document B (doc_1ad23bd9b7af),retrieval.baseline_recall3,0
+Document B (doc_1ad23bd9b7af),retrieval.baseline_recall5,0
+Document B (doc_1ad23bd9b7af),retrieval.baseline_mrr,0
+Document B (doc_1ad23bd9b7af),retrieval.hybrid_recall3,0
+Document B (doc_1ad23bd9b7af),retrieval.hybrid_recall5,0
+Document B (doc_1ad23bd9b7af),retrieval.hybrid_mrr,0
+Document B (doc_1ad23bd9b7af),quality.avg_semantic_similarity,0.5876
+Document B (doc_1ad23bd9b7af),quality.factual_sim,0.5781
+Document B (doc_1ad23bd9b7af),quality.conceptual_sim,0.6064
+Document B (doc_1ad23bd9b7af),quality.multihop_sim,0
+Document B (doc_1ad23bd9b7af),quality.key_term_coverage,0.5684
+Document B (doc_1ad23bd9b7af),quality.hallucination_rate,6.7
+Document B (doc_1ad23bd9b7af),adversarial.total,0
+Document B (doc_1ad23bd9b7af),adversarial.correct_refusals,0
+Document B (doc_1ad23bd9b7af),adversarial.accuracy,0.0
+Document B (doc_1ad23bd9b7af),latency.avg_embed_ms,21.1
+Document B (doc_1ad23bd9b7af),latency.avg_vector_ms,0.1
+Document B (doc_1ad23bd9b7af),latency.avg_hybrid_ms,65.0
+Document B (doc_1ad23bd9b7af),latency.avg_total_ms,86.1
+Document B (doc_1ad23bd9b7af),latency.p50_ms,82.2
+Document B (doc_1ad23bd9b7af),latency.p95_ms,119.5
+Document B (doc_1ad23bd9b7af),latency.note,Excludes LLM generation (API-dependent). Retrieval-only pipeline.
