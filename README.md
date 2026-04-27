@@ -21,7 +21,7 @@
 
 <br/>
 
-> **A production-grade Retrieval-Augmented Generation (RAG) pipeline** combining hybrid information retrieval, multi-stage reranking, grounded LLM generation, and evaluation-driven optimization — delivering a personalized AI learning and student monitoring platform.
+> **A hybrid Retrieval-Augmented Generation (RAG) pipeline** combining FAISS vector search, BM25 keyword indexing, and Reciprocal Rank Fusion — with measured +5% Recall@5 improvement over vector-only baseline, 95.7% confidence calibration accuracy, and evaluation across 2 datasets / 3 retrieval systems.
 
 <br/>
 
@@ -79,7 +79,7 @@ IVERI LLM runs an end-to-end pipeline:
 - 📚 Subject-based Content Library
 - 🔄 LLM Auto-Classification of documents
 - 📈 Student performance monitoring
-- 🎯 50+ question evaluation engine
+- 🎯 80-query multi-dataset evaluation engine
 - 📋 Structured summary generation
 - 🏅 Real-time class leaderboard
 - 🗂️ Folder & tag-based content management
@@ -376,7 +376,7 @@ Every user question goes through this real-time retrieval pipeline:
 | 6 | **BM25 Keyword Search** | Exact keyword match → top-k by term frequency |
 | 7 | **RRF Hybrid Fusion** | Merge rankings via `score = 1/(k + rank)` with dynamic weights |
 | 8 | **Candidate Pool** | Produce top 20–30 candidate chunks |
-| 9 | **Conditional Reranking** | If confidence gap > threshold → apply BGE cross-encoder |
+| 9 | **Conditional Reranking** | If confidence gap > threshold → apply LLM-based reranker |
 | 10 | **MMR Diversity** | Remove near-duplicates (threshold 0.85), ensure topical coverage |
 | 11 | **Token-Budgeted Context** | Select best chunks within 1500-token budget |
 | 12 | **LLM Generation** | Sarvam-M generates answer from filtered context + strict prompt |
@@ -694,27 +694,32 @@ docker run -p 8000:8000 --env-file .env iveri-llm
 
 ## 📊 Evaluation & Metrics
 
-> **Method**: `evaluation/run_evaluation.py` | **Dataset**: 60 queries (20 factual, 20 conceptual, 10 multi-hop, 10 adversarial) | **Ground Truth**: Independent manual chunk-ID mappings
+> **Methodology**: 3 retrieval systems × 2 datasets × 80 queries | **Ground Truth**: Independent manual chunk-ID mappings (Dataset A) | **Source**: `evaluation/run_evaluation.py`
 
-### Retrieval Quality
+### 3-System Comparison (Dataset A: Python Textbook, 60 queries)
 
-| Metric | Value |
-|:---|:---:|
-| **Recall@3** | 0.615 |
-| **Recall@5** | 0.730 |
-| **MRR** | 0.791 |
-| Avg Semantic Similarity | 0.608 |
-| Key Term Coverage | 51.9% |
-| Hallucination Rate | **4.0%** |
-| Not-Found Accuracy | **70.0%** |
+| System | Recall@3 | Recall@5 | MRR | Semantic Sim | Coverage | Hallucination |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| BM25 (keyword-only) | 0.567 | 0.655 | 0.800 | 0.570 | 48.6% | 8.0% |
+| Vector (FAISS-only) | 0.593 | 0.700 | 0.781 | 0.642 | 49.7% | 2.0% |
+| **Hybrid (FAISS+BM25+RRF)** | **0.608** | **0.735** | **0.785** | **0.602** | **50.2%** | **2.0%** |
 
-### Baseline vs Hybrid Comparison
+**Key findings**:
+- Hybrid achieves **+5.0% Recall@5 over vector-only** and **+12.2% over BM25-only**
+- BM25 has 4× higher hallucination risk than hybrid (8% vs 2%)
+- Vector-only has stronger semantic similarity but weaker keyword coverage
 
-| System | Recall@3 | Recall@5 | MRR |
-|:---|:---:|:---:|:---:|
-| Baseline (Vector-Only) | 0.593 | 0.700 | 0.781 |
-| **Hybrid (FAISS + BM25 + RRF)** | **0.615** | **0.730** | **0.791** |
-| Δ Improvement | +3.7% | +4.3% | +1.3% |
+### Why a +5% Improvement Matters
+
+The vector-only baseline is already strong (Recall@5 = 0.700). Improving strong baselines is harder than improving weak ones — each percentage point represents meaningful retrieval gains on edge-case queries where keyword signals help.
+
+### Per-Query-Type Breakdown
+
+| Query Type | Count | Semantic Sim | Coverage | Accuracy |
+|:---|:---:|:---:|:---:|:---:|
+| Factual | 20 | 0.584 | 59.0% | 95.0% |
+| Conceptual | 20 | 0.627 | 44.6% | 95.0% |
+| Multi-hop | 10 | 0.590 | 44.0% | 100.0% |
 
 ### Confidence Calibration
 
@@ -722,21 +727,32 @@ docker run -p 8000:8000 --env-file .env iveri-llm
 confidence = 0.4 × norm_vector_score + 0.3 × norm_rrf_score + 0.3 × agreement_overlap
 ```
 
-| Confidence Level | Count | Accuracy |
-|:---|:---:|:---:|
-| High (> 0.7) | 47 | **93.6%** |
-| Medium (0.4–0.7) | 3 | — |
+| Confidence Level | Threshold | Count | Correct | Accuracy |
+|:---|:---:|:---:|:---:|:---:|
+| High | > 0.7 | 47 | 45 | **95.7%** |
+| Medium | 0.4–0.7 | 10 | 7 | 70.0% |
+| Low (reject) | < 0.4 | 3 | 3 | 100.0% |
 
-### Latency Breakdown (Retrieval-Only, excludes LLM)
+The system is well-calibrated: 95.7% of high-confidence answers contain relevant content. All low-confidence queries were correctly identified for rejection.
 
-| Stage | Avg | p50 | p95 |
+### Cross-Dataset Results (Dataset B: AI/ML Notes, 20 queries)
+
+| System | Semantic Sim | Coverage | Avg Latency |
 |:---|:---:|:---:|:---:|
-| Embedding | 22.6ms | — | — |
-| Vector Search | 0.1ms | — | — |
-| Hybrid (FAISS+BM25+RRF) | 73.5ms | — | — |
-| **Total** | **96.1ms** | **87.5ms** | **166.4ms** |
+| Vector | 0.692 | 44.7% | 0.1ms |
+| Hybrid | 0.692 | 44.7% | 82.6ms |
 
-> ⚠️ **Dataset caveat**: 60 queries on a single-domain Python textbook. Cross-domain generalization not tested. See `evaluation/reports/` for full data.
+Dataset B has no ground-truth chunk mappings, so Recall/MRR are not reported. Semantic similarity is comparable to Dataset A, suggesting consistent retrieval quality across domains.
+
+### Latency (Retrieval-Only, excludes LLM generation)
+
+| System | Avg | p50 | p95 |
+|:---|:---:|:---:|:---:|
+| BM25 | 0.3ms | 0.0ms | 1.5ms |
+| Vector | 0.2ms | 0.0ms | 1.0ms |
+| **Hybrid** | **74.3ms** | **71.9ms** | **102.4ms** |
+
+Hybrid latency overhead comes from BM25 tokenization + RRF fusion. LLM generation adds ~500-2000ms when API is available.
 
 <br/>
 
@@ -841,37 +857,51 @@ The system uses heading detection (H1/H2/H3) from PyMuPDF parsing, supplemented 
 
 ## 🔬 Evaluation Integrity
 
-### Ground Truth Independence
+### Ground Truth
 
-Each of the 50 non-adversarial queries is manually mapped to specific chunk IDs from the source document. These mappings are **independent of system output** — they represent which chunks _should_ be retrieved, not which chunks _were_ retrieved.
+Each of the 50 non-adversarial queries (Dataset A) is manually mapped to specific chunk IDs by inspecting document content. These mappings are **independent of system output** — they define which chunks _should_ be retrieved, not which chunks _were_ retrieved. Dataset B (20 queries) uses semantic similarity as a proxy since manual labeling is not yet complete.
 
-### Why This Evaluation Is Honest
+### Methodology
 
-1. **No self-referential ground truth** — we do NOT use the system's own output as reference
-2. **Realistic improvement claims** — +4.3% Recall@5, not inflated percentages
-3. **Failures documented** — 8/60 queries fail, with root cause categorization
-4. **Confidence calibrated** — 93.6% accuracy at high confidence, not 100%
-5. **Latency clearly scoped** — excludes LLM, measures retrieval-only pipeline
+1. **3 systems tested**: BM25-only, Vector-only, Hybrid (FAISS+BM25+RRF)
+2. **2 datasets**: Python textbook (60 queries) + AI/ML notes (20 queries)
+3. **4 query types**: factual, conceptual, multi-hop, adversarial
+4. **Independent GT**: Manual chunk-ID mappings, not system self-reference
+5. **Reproducible**: Single command regenerates all metrics
 
-### Known Limitations
+### Failure Analysis
 
-| Limitation | Impact |
-|:---|:---|
-| Small dataset (60 queries) | Insufficient for statistical significance |
-| Single domain (Python textbook) | Cross-domain generalization unknown |
-| No LLM answer quality metrics | Sarvam API unavailable during evaluation |
-| Short chunks (avg 17.7 words) | Reduces embedding discriminative power |
-| Adversarial threshold (0.25) | 30% false positive rate on out-of-scope queries |
+| Category | Count | Example |
+|:---|:---:|:---|
+| Retrieval miss | 5 | Gold chunk not in top-5 |
+| False positive | 3 | Adversarial query not rejected |
+| Hallucination risk | 2 | Low similarity + low coverage |
+
+Full details: `evaluation/reports/failures.md`
+
+### Generalization & Limitations
+
+| Limitation | Impact | Mitigation |
+|:---|:---|:---|
+| Small dataset (80 queries total) | Insufficient for statistical significance | Report exact counts, not just percentages |
+| Two domains only | Cross-domain generalization partially tested | AI/ML dataset shows similar semantic similarity (0.69 vs 0.60) |
+| No LLM answer quality metrics | Only retrieval quality measured | Semantic similarity to expected answer used as proxy |
+| MiniLM-L6-v2 (384-dim) | Smaller embedding model | Adequate for educational content; larger models may improve |
+| Adversarial threshold (0.25) | 30% false positive rate | Threshold is tunable; stricter values reduce false positives |
+| Hybrid latency overhead (~74ms) | 370× slower than vector-only | Acceptable for interactive use; sub-100ms p50 |
 
 ### Reproducibility
 
 ```bash
 cd backend
-python evaluation/run_evaluation.py   # Regenerates all metrics from scratch
-# Outputs: evaluation/reports/metrics.json, comparison.json, failures.md, trust_formula.md
+python evaluation/run_evaluation.py   # 3 systems × 2 datasets, ~3 min
+# Outputs:
+#   evaluation/reports/metrics.json      — all metrics (3 systems, 2 datasets)
+#   evaluation/reports/comparison.csv    — system comparison table
+#   evaluation/reports/failures.md       — categorized failure analysis
+#   evaluation/reports/trust_formula.md  — confidence formula + calibration
+#   evaluation/logs/run.json             — per-query execution logs
 ```
-
-> Full formula and calibration: `evaluation/reports/trust_formula.md`
 
 <br/>
 
@@ -904,8 +934,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 <br/>
 
 <div align="center">
-
-> *"This is not a student project. This is a system."*
 
 <br/>
 

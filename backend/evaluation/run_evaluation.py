@@ -1,77 +1,136 @@
-"""IVERI LLM — Credibility-Fixed Evaluation (Phases 1-9).
-Independent ground truth, multi-dataset, trust formalization, latency breakdown.
+"""IVERI LLM — Comprehensive Multi-Dataset Evaluation (Phases 2-7).
+BM25-only baseline, Vector-only baseline, Hybrid system.
+Answer quality, multi-dataset, trust validation.
 """
-import asyncio, csv, json, os, sys, time, random, math
+import asyncio, csv, json, os, sys, time
 from pathlib import Path
 from datetime import datetime
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.chdir(str(Path(__file__).resolve().parent.parent))
-
 BASE = Path("evaluation")
 
-# === GROUND TRUTH: manually mapped chunk IDs for doc_11c024ccf162 ===
-GROUND_TRUTH = {
-    "F01": ["c_7ecfd4d5f417","c_289a9189d17b","c_bbbcc3794f4b"],
-    "F02": ["c_b380c1ac25e1","c_a9a432bcb4ed","c_a8f2b3df765f"],
-    "F03": ["c_330946c99287","c_3e073f2e8068"],
-    "F04": ["c_1885dd7ad9ed","c_f7f6a75df9ca","c_1786c6e7c6b5"],
-    "F05": ["c_f98efd97da26","c_247b99b9f807","c_65afd418a661"],
-    "F06": ["c_163bc99577a9","c_c04916c1c3b0","c_42b5d0777bac"],
-    "F07": ["c_62d796bd0cac","c_c8588286ab34"],
-    "F08": ["c_ec46c94c0ddd","c_be85e2e96ce0"],
-    "F09": ["c_c8fc3127f857","c_04b548a90061","c_10e30c065703"],
-    "F10": ["c_8a69e4135a24"],
-    "F11": ["c_ada4f094fa36","c_b493bbcf8aa7","c_ba93f31ca99b","c_dc4c132ada07"],
-    "F12": ["c_89f1194d0242","c_e8adb0cd837c","c_8b74381372c0"],
-    "F13": ["c_c0549b0e58d7","c_4cbba995df38"],
-    "F14": ["c_86ef97d2bbf3"],
-    "F15": ["c_f745092d9032","c_46b68418ea0b"],
-    "F16": ["c_45137df2249f","c_041eb6f37d44"],
-    "F17": ["c_10e30c065703","c_04b548a90061","c_0c5ad41bf610","c_c8fc3127f857"],
-    "F18": ["c_a8f2b3df765f","c_a9a432bcb4ed","c_b380c1ac25e1"],
-    "F19": ["c_8f957d0fa5b8","c_1786c6e7c6b5"],
-    "F20": ["c_81f45b6ad4f0"],
-    "C01": ["c_cc85062c89c2","c_5c284b0d92ec","c_be7c85cde112"],
-    "C02": ["c_330946c99287","c_a9a432bcb4ed"],
-    "C03": ["c_6d7f19fba0d4","c_752e7bf0b413","c_9aada2bb5c3b"],
-    "C04": ["c_c8fc3127f857","c_04b548a90061","c_a9f1b8d0eabd"],
-    "C05": ["c_65afd418a661","c_601d5c3a7412","c_247b99b9f807"],
-    "C06": ["c_ada4f094fa36","c_ba93f31ca99b","c_b493bbcf8aa7"],
-    "C07": ["c_f7f6a75df9ca","c_1786c6e7c6b5"],
-    "C08": ["c_c04916c1c3b0","c_42b5d0777bac"],
-    "C09": ["c_8edfe7c26f68","c_54b5171e2ea6"],
-    "C10": ["c_a9a432bcb4ed","c_a8f2b3df765f","c_330946c99287","c_b380c1ac25e1"],
-    "C11": ["c_cc85062c89c2","c_5c284b0d92ec"],
-    "C12": ["c_c0549b0e58d7","c_4cbba995df38"],
-    "C13": ["c_89f1194d0242","c_e8adb0cd837c","c_8b74381372c0"],
-    "C14": ["c_c8fc3127f857","c_a9f1b8d0eabd","c_0c5ad41bf610"],
-    "C15": ["c_65afd418a661","c_247b99b9f807","c_f98efd97da26"],
-    "C16": ["c_d154c587830d","c_70ee780b2762","c_2c071b5b9408"],
-    "C17": ["c_6d7f19fba0d4","c_330946c99287","c_b380c1ac25e1"],
-    "C18": ["c_55ff91cba487","c_b493bbcf8aa7","c_ba93f31ca99b","c_dc4c132ada07"],
-    "C19": ["c_c8588286ab34","c_62d796bd0cac"],
-    "C20": ["c_83e0c0bcd842","c_4d1cb3b03136"],
-    "M01": ["c_752e7bf0b413","c_9aada2bb5c3b","c_330946c99287"],
-    "M02": ["c_c8fc3127f857","c_04b548a90061","c_a8f2b3df765f"],
-    "M03": ["c_54b5171e2ea6","c_8edfe7c26f68","c_247b99b9f807"],
-    "M04": ["c_83e0c0bcd842","c_a8f2b3df765f","c_4d1cb3b03136"],
-    "M05": ["c_1786c6e7c6b5","c_f7f6a75df9ca","c_330946c99287"],
-    "M06": ["c_4cbba995df38","c_c0549b0e58d7","c_8edfe7c26f68","c_2c071b5b9408"],
-    "M07": ["c_752e7bf0b413","c_6d7f19fba0d4","c_9aada2bb5c3b"],
-    "M08": ["c_ada4f094fa36","c_e8adb0cd837c","c_cc85062c89c2"],
-    "M09": ["c_c8588286ab34","c_62d796bd0cac"],
-    "M10": ["c_45137df2249f","c_041eb6f37d44","c_a8f2b3df765f"],
+# ── Dataset B: AI/ML document (doc_cdda7fe45c88, 21 chunks) ──
+DATASET_B_DOC = "doc_cdda7fe45c88"
+DATASET_B = [
+  {"id":"B_F01","type":"factual","query":"What is Artificial Intelligence?","expected_answer":"Artificial Intelligence is the simulation of human intelligence by machines, enabling them to perform tasks that typically require human cognition.","key_terms":["simulation","human intelligence","machines"]},
+  {"id":"B_F02","type":"factual","query":"What is Narrow AI?","expected_answer":"Narrow AI is artificial intelligence designed for a specific task, such as voice assistants or image recognition. It cannot perform tasks outside its defined scope.","key_terms":["specific task","voice assistants","narrow"]},
+  {"id":"B_F03","type":"factual","query":"What is General AI?","expected_answer":"General AI refers to a machine that can understand, learn, and apply intelligence across a wide range of tasks, similar to human cognitive abilities.","key_terms":["general","wide range","human cognitive"]},
+  {"id":"B_F04","type":"factual","query":"What is Super AI?","expected_answer":"Super AI is a hypothetical form of AI that surpasses human intelligence in all aspects including creativity, problem-solving, and social intelligence.","key_terms":["surpasses","human intelligence","hypothetical"]},
+  {"id":"B_F05","type":"factual","query":"What is supervised learning?","expected_answer":"Supervised learning is a type of machine learning where the model is trained on labeled data, learning to map inputs to known outputs.","key_terms":["supervised","labeled data","inputs","outputs"]},
+  {"id":"B_F06","type":"factual","query":"What is unsupervised learning?","expected_answer":"Unsupervised learning is a type of machine learning where the model finds patterns in unlabeled data without predefined outputs.","key_terms":["unsupervised","unlabeled","patterns"]},
+  {"id":"B_F07","type":"factual","query":"What is reinforcement learning?","expected_answer":"Reinforcement learning is a type of machine learning where an agent learns by interacting with an environment and receiving rewards or penalties.","key_terms":["reinforcement","agent","rewards","environment"]},
+  {"id":"B_F08","type":"factual","query":"What is overfitting?","expected_answer":"Overfitting occurs when a model learns the training data too well, including noise, and performs poorly on new unseen data.","key_terms":["overfitting","noise","training data","poorly"]},
+  {"id":"B_F09","type":"factual","query":"What is the bias-variance tradeoff?","expected_answer":"The bias-variance tradeoff is the balance between a model's ability to fit training data (low bias) and generalize to new data (low variance).","key_terms":["bias","variance","tradeoff","generalize"]},
+  {"id":"B_F10","type":"factual","query":"What is linear regression?","expected_answer":"Linear regression is a supervised learning algorithm that models the relationship between a dependent variable and one or more independent variables using a linear equation.","key_terms":["linear regression","supervised","linear equation"]},
+  {"id":"B_C01","type":"conceptual","query":"Why is AI considered transformative technology?","expected_answer":"AI is transformative because it automates cognitive tasks, enables data-driven decisions, and creates new capabilities in healthcare, finance, transportation and other domains.","key_terms":["transformative","automates","cognitive","domains"]},
+  {"id":"B_C02","type":"conceptual","query":"How does a decision tree make predictions?","expected_answer":"A decision tree makes predictions by splitting data based on feature values at each node, following branches until reaching a leaf node that gives the prediction.","key_terms":["decision tree","splitting","feature","leaf node"]},
+  {"id":"B_C03","type":"conceptual","query":"Why does overfitting reduce model performance?","expected_answer":"Overfitting reduces performance because the model memorizes training data patterns including noise, so it cannot generalize to new data it hasn't seen before.","key_terms":["memorizes","noise","generalize","new data"]},
+  {"id":"B_C04","type":"conceptual","query":"How do neural networks learn from data?","expected_answer":"Neural networks learn by adjusting weights through backpropagation and gradient descent, minimizing the error between predicted and actual outputs across layers of neurons.","key_terms":["neural networks","weights","backpropagation","layers"]},
+  {"id":"B_C05","type":"conceptual","query":"What are the limitations of current AI systems?","expected_answer":"Current AI limitations include lack of common sense reasoning, data dependency, bias in training data, inability to explain decisions, and high computational requirements.","key_terms":["limitations","common sense","bias","computational"]},
+  {"id":"B_M01","type":"multi-hop","query":"How does the bias-variance tradeoff relate to overfitting and underfitting?","expected_answer":"High variance leads to overfitting (model too complex, fits noise), while high bias leads to underfitting (model too simple, misses patterns). The tradeoff is finding the right model complexity.","key_terms":["bias","variance","overfitting","underfitting","complexity"]},
+  {"id":"B_M02","type":"multi-hop","query":"How do supervised and unsupervised learning differ in their approach to training data?","expected_answer":"Supervised learning requires labeled data with known outputs for training, while unsupervised learning works with unlabeled data and discovers hidden patterns or structures autonomously.","key_terms":["labeled","unlabeled","supervised","unsupervised","patterns"]},
+  {"id":"B_M03","type":"multi-hop","query":"How does regularization help prevent overfitting in neural networks?","expected_answer":"Regularization adds a penalty term to the loss function that discourages complex models. This prevents the network from memorizing training data and forces it to learn generalizable patterns.","key_terms":["regularization","penalty","complex","generalize"]},
+  {"id":"B_A01","type":"adversarial","query":"What is the best Python web framework?","expected_answer":"NOT_IN_DOCUMENT","key_terms":[]},
+  {"id":"B_A02","type":"adversarial","query":"How do you set up a Docker container?","expected_answer":"NOT_IN_DOCUMENT","key_terms":[]}
+]
+
+# Ground truth chunk IDs for Dataset A (from previous evaluation)
+GT_A = {
+    "F01":["c_7ecfd4d5f417","c_289a9189d17b","c_bbbcc3794f4b"],
+    "F02":["c_b380c1ac25e1","c_a9a432bcb4ed","c_a8f2b3df765f"],
+    "F03":["c_330946c99287","c_3e073f2e8068"],
+    "F04":["c_1885dd7ad9ed","c_f7f6a75df9ca","c_1786c6e7c6b5"],
+    "F05":["c_f98efd97da26","c_247b99b9f807","c_65afd418a661"],
+    "F06":["c_163bc99577a9","c_c04916c1c3b0","c_42b5d0777bac"],
+    "F07":["c_62d796bd0cac","c_c8588286ab34"],
+    "F08":["c_ec46c94c0ddd","c_be85e2e96ce0"],
+    "F09":["c_c8fc3127f857","c_04b548a90061","c_10e30c065703"],
+    "F10":["c_8a69e4135a24"],
+    "F11":["c_ada4f094fa36","c_b493bbcf8aa7","c_ba93f31ca99b","c_dc4c132ada07"],
+    "F12":["c_89f1194d0242","c_e8adb0cd837c","c_8b74381372c0"],
+    "F13":["c_c0549b0e58d7","c_4cbba995df38"],
+    "F14":["c_86ef97d2bbf3"],
+    "F15":["c_f745092d9032","c_46b68418ea0b"],
+    "F16":["c_45137df2249f","c_041eb6f37d44"],
+    "F17":["c_10e30c065703","c_04b548a90061","c_0c5ad41bf610","c_c8fc3127f857"],
+    "F18":["c_a8f2b3df765f","c_a9a432bcb4ed","c_b380c1ac25e1"],
+    "F19":["c_8f957d0fa5b8","c_1786c6e7c6b5"],
+    "F20":["c_81f45b6ad4f0"],
+    "C01":["c_cc85062c89c2","c_5c284b0d92ec","c_be7c85cde112"],
+    "C02":["c_330946c99287","c_a9a432bcb4ed"],
+    "C03":["c_6d7f19fba0d4","c_752e7bf0b413","c_9aada2bb5c3b"],
+    "C04":["c_c8fc3127f857","c_04b548a90061","c_a9f1b8d0eabd"],
+    "C05":["c_65afd418a661","c_601d5c3a7412","c_247b99b9f807"],
+    "C06":["c_ada4f094fa36","c_ba93f31ca99b","c_b493bbcf8aa7"],
+    "C07":["c_f7f6a75df9ca","c_1786c6e7c6b5"],
+    "C08":["c_c04916c1c3b0","c_42b5d0777bac"],
+    "C09":["c_8edfe7c26f68","c_54b5171e2ea6"],
+    "C10":["c_a9a432bcb4ed","c_a8f2b3df765f","c_330946c99287","c_b380c1ac25e1"],
+    "C11":["c_cc85062c89c2","c_5c284b0d92ec"],
+    "C12":["c_c0549b0e58d7","c_4cbba995df38"],
+    "C13":["c_89f1194d0242","c_e8adb0cd837c","c_8b74381372c0"],
+    "C14":["c_c8fc3127f857","c_a9f1b8d0eabd","c_0c5ad41bf610"],
+    "C15":["c_65afd418a661","c_247b99b9f807","c_f98efd97da26"],
+    "C16":["c_d154c587830d","c_70ee780b2762","c_2c071b5b9408"],
+    "C17":["c_6d7f19fba0d4","c_330946c99287","c_b380c1ac25e1"],
+    "C18":["c_55ff91cba487","c_b493bbcf8aa7","c_ba93f31ca99b","c_dc4c132ada07"],
+    "C19":["c_c8588286ab34","c_62d796bd0cac"],
+    "C20":["c_83e0c0bcd842","c_4d1cb3b03136"],
+    "M01":["c_752e7bf0b413","c_9aada2bb5c3b","c_330946c99287"],
+    "M02":["c_c8fc3127f857","c_04b548a90061","c_a8f2b3df765f"],
+    "M03":["c_54b5171e2ea6","c_8edfe7c26f68","c_247b99b9f807"],
+    "M04":["c_83e0c0bcd842","c_a8f2b3df765f","c_4d1cb3b03136"],
+    "M05":["c_1786c6e7c6b5","c_f7f6a75df9ca","c_330946c99287"],
+    "M06":["c_4cbba995df38","c_c0549b0e58d7","c_8edfe7c26f68","c_2c071b5b9408"],
+    "M07":["c_752e7bf0b413","c_6d7f19fba0d4","c_9aada2bb5c3b"],
+    "M08":["c_ada4f094fa36","c_e8adb0cd837c","c_cc85062c89c2"],
+    "M09":["c_c8588286ab34","c_62d796bd0cac"],
+    "M10":["c_45137df2249f","c_041eb6f37d44","c_a8f2b3df765f"],
 }
 
-async def evaluate_dataset(doc_id, dataset, gt_map, label):
-    """Run evaluation on one dataset with independent ground truth."""
-    from app.state import chunk_store, faiss_indexes, bm25_indexes
-    from app.indexing.builder import load_indexes
-    from app.indexing.bm25_index import load_bm25_index
+async def run_system(doc_id, query, system_type):
+    """Run a single query through a specific system configuration."""
     from app.retrieval.hybrid import hybrid_retrieve
     from app.indexing.vector_index import search_vector
+    from app.rag.embedder import embed_single
+    from app.state import bm25_indexes, chunk_store
+
+    q_emb = embed_single(query)
+    t0 = time.time()
+
+    if system_type == "vector":
+        chunks = await search_vector(doc_id, q_emb, top_k=5)
+    elif system_type == "bm25":
+        bm25 = bm25_indexes.get(doc_id)
+        if bm25:
+            raw = bm25.search(query, top_k=5)  # returns list[tuple(chunk_id, score)]
+            # Convert to dicts by looking up chunk text
+            all_chunks = {c["chunk_id"]: c for c in chunk_store.get(doc_id, [])}
+            chunks = []
+            for cid, score in raw:
+                ch = all_chunks.get(cid, {})
+                chunks.append({"chunk_id": cid, "score": score, "text": ch.get("text","")})
+        else:
+            chunks = []
+    elif system_type == "hybrid":
+        chunks = await hybrid_retrieve(doc_id, query, top_k=5)
+    else:
+        chunks = []
+
+    latency = (time.time() - t0) * 1000
+    ids = [c.get("chunk_id","") if isinstance(c, dict) else "" for c in chunks]
+    texts = [c.get("text","")[:150] if isinstance(c, dict) else "" for c in chunks]
+    scores = [c.get("rrf_score", c.get("score", 0)) if isinstance(c, dict) else 0 for c in chunks]
+    return ids, texts, scores, latency
+
+
+async def evaluate_dataset(doc_id, dataset, gt_map, label):
+    """Full evaluation on one dataset across all 3 systems."""
+    from app.state import chunk_store, bm25_indexes
+    from app.indexing.builder import load_indexes
+    from app.indexing.bm25_index import load_bm25_index
     from app.rag.embedder import embed_single, get_model
     from app.evaluation.metrics import recall_at_k, mrr
     from sentence_transformers import util as st_util
@@ -81,288 +140,202 @@ async def evaluate_dataset(doc_id, dataset, gt_map, label):
     if bm25: bm25_indexes[doc_id] = bm25
     model = get_model()
 
-    results = []
-    b_r3, b_r5, b_mrrs = [], [], []
-    h_r3, h_r5, h_mrrs = [], [], []
-    lats_embed, lats_vec, lats_hyb = [], [], []
+    systems = ["bm25", "vector", "hybrid"]
+    results = {s: {"r3":[],"r5":[],"mrr":[],"lats":[],"sims":[],"covs":[]} for s in systems}
+    details = []
+    trust_data = []
 
     for item in dataset:
-        qid = item["id"]
-        q = item["query"]
+        qid, q, qtype = item["id"], item["query"], item["type"]
         expected = item["expected_answer"]
-        is_adv = item["type"] == "adversarial"
         gold = gt_map.get(qid, [])
+        is_adv = qtype == "adversarial"
+        keys = item.get("key_terms", [])
 
-        t0 = time.time(); q_emb = embed_single(q); t_emb = time.time()-t0
-        t0 = time.time(); bc = await search_vector(doc_id, q_emb, top_k=5); t_vec = time.time()-t0
-        t0 = time.time(); hc = await hybrid_retrieve(doc_id, q, top_k=5); t_hyb = time.time()-t0
+        for sys_type in systems:
+            ids, texts, scores, lat = await run_system(doc_id, q, sys_type)
+            results[sys_type]["lats"].append(lat)
 
-        lats_embed.append(t_emb*1000); lats_vec.append(t_vec*1000); lats_hyb.append(t_hyb*1000)
+            if not is_adv and gold:
+                results[sys_type]["r3"].append(recall_at_k(ids, gold, 3))
+                results[sys_type]["r5"].append(recall_at_k(ids, gold, 5))
+                results[sys_type]["mrr"].append(mrr(ids, gold))
 
-        b_ids = [c["chunk_id"] for c in bc]
-        h_ids = [c["chunk_id"] for c in hc]
+            # Semantic similarity (answer quality proxy)
+            if not is_adv and texts and expected != "NOT_IN_DOCUMENT":
+                best = texts[0]
+                sim = float(st_util.cos_sim(
+                    model.encode(best, convert_to_tensor=True),
+                    model.encode(expected, convert_to_tensor=True)
+                )[0][0])
+                results[sys_type]["sims"].append(sim)
 
-        # Semantic similarity
-        if not is_adv and hc:
-            best = hc[0].get("text","")
-            sim = float(st_util.cos_sim(model.encode(best,convert_to_tensor=True), model.encode(expected,convert_to_tensor=True))[0][0])
-        else:
-            sim = 0.0
+            # Key term coverage
+            if keys and texts:
+                all_t = " ".join(t.lower() for t in texts[:3])
+                cov = sum(1 for k in keys if k.lower() in all_t) / len(keys)
+                results[sys_type]["covs"].append(cov)
 
-        # Key term coverage
-        keys = item.get("key_terms",[])
-        if keys and hc:
-            all_t = " ".join(c.get("text","").lower() for c in hc[:3])
-            cov = sum(1 for k in keys if k.lower() in all_t) / len(keys)
-        else:
-            cov = 0.0
+        # Trust validation (hybrid only)
+        h_ids, h_texts, h_scores, h_lat = await run_system(doc_id, q, "hybrid")
+        v_ids, _, v_scores, _ = await run_system(doc_id, q, "vector")
+        top_vec = v_scores[0] if v_scores else 0
+        top_rrf = h_scores[0] if h_scores else 0
+        overlap = len(set(v_ids[:3]) & set(h_ids[:3])) / 3
+        conf = 0.4*min(top_vec/0.5,1) + 0.3*min(top_rrf/0.1,1) + 0.3*overlap
+        conf_level = "high" if conf>0.7 else ("medium" if conf>0.4 else "low")
 
-        # Confidence (trust formula)
-        top_vec = bc[0]["score"] if bc else 0
-        top_rrf = hc[0].get("rrf_score",0) if hc else 0
-        norm_vec = min(top_vec / 0.5, 1.0)
-        norm_rrf = min(top_rrf / 0.1, 1.0)
-        overlap = len(set(b_ids[:3]) & set(h_ids[:3])) / 3
-        confidence = 0.4*norm_vec + 0.3*norm_rrf + 0.3*overlap
-        conf_level = "high" if confidence>0.7 else ("medium" if confidence>0.4 else "low")
+        correct = False
+        if is_adv:
+            correct = top_vec < 0.25  # Should refuse
+        elif gold:
+            correct = recall_at_k(h_ids, gold, 5) > 0
 
-        # Not-found detection
-        refused = top_vec < 0.25
+        trust_data.append({"id":qid,"type":qtype,"confidence":round(conf,3),"level":conf_level,"correct":correct})
 
-        if not is_adv and gold:
-            b_r3.append(recall_at_k(b_ids, gold, 3))
-            b_r5.append(recall_at_k(b_ids, gold, 5))
-            b_mrrs.append(mrr(b_ids, gold))
-            h_r3.append(recall_at_k(h_ids, gold, 3))
-            h_r5.append(recall_at_k(h_ids, gold, 5))
-            h_mrrs.append(mrr(h_ids, gold))
-
-        results.append({
-            "id": qid, "query": q, "type": item["type"],
-            "gold_chunks": gold[:3] if gold else [],
-            "baseline_top5": b_ids, "hybrid_top5": h_ids,
-            "baseline_recall3": recall_at_k(b_ids, gold, 3) if gold else None,
-            "hybrid_recall3": recall_at_k(h_ids, gold, 3) if gold else None,
-            "baseline_recall5": recall_at_k(b_ids, gold, 5) if gold else None,
-            "hybrid_recall5": recall_at_k(h_ids, gold, 5) if gold else None,
-            "semantic_similarity": round(sim, 4),
-            "key_term_coverage": round(cov, 3),
-            "top_vector_score": round(top_vec, 4),
-            "confidence": round(confidence, 4),
-            "confidence_level": conf_level,
-            "is_adversarial": is_adv,
-            "correctly_refused": is_adv and refused,
-            "latency_embed_ms": round(t_emb*1000, 1),
-            "latency_vector_ms": round(t_vec*1000, 1),
-            "latency_hybrid_ms": round(t_hyb*1000, 1),
-            "latency_total_ms": round((t_emb+t_hyb)*1000, 1),
-            "top_chunk_text": hc[0].get("text","")[:120] if hc else "",
+        # Detailed log (hybrid)
+        sim_h = results["hybrid"]["sims"][-1] if results["hybrid"]["sims"] and not is_adv else 0
+        cov_h = results["hybrid"]["covs"][-1] if results["hybrid"]["covs"] else 0
+        details.append({
+            "id":qid,"query":q,"type":qtype,
+            "hybrid_ids":h_ids[:3],"vector_ids":v_ids[:3],
+            "semantic_sim":round(sim_h,4),"coverage":round(cov_h,3),
+            "confidence":round(conf,3),"level":conf_level,
+            "correct":correct,"latency":round(h_lat,1)
         })
 
     avg = lambda l: round(sum(l)/max(len(l),1), 4) if l else 0
+    pct = lambda n,d: round(n/max(d,1)*100, 1)
 
-    in_scope = [r for r in results if r["type"] != "adversarial"]
-    adversarial = [r for r in results if r["type"] == "adversarial"]
-    all_lats = [r["latency_total_ms"] for r in results]
-    sl = sorted(all_lats)
+    # Compile per-system metrics
+    compiled = {}
+    for s in systems:
+        r = results[s]
+        sl = sorted(r["lats"])
+        hall = sum(1 for sim,cov in zip(r["sims"],r["covs"]) if sim<0.3 and cov<0.3) if r["sims"] else 0
+        compiled[s] = {
+            "recall3": avg(r["r3"]), "recall5": avg(r["r5"]), "mrr": avg(r["mrr"]),
+            "avg_sim": avg(r["sims"]), "avg_cov": avg(r["covs"]),
+            "hallucination_pct": pct(hall, len(r["sims"])) if r["sims"] else 0,
+            "avg_lat": round(np.mean(r["lats"]),1) if r["lats"] else 0,
+            "p50_lat": round(sl[len(sl)//2],1) if sl else 0,
+            "p95_lat": round(sl[int(len(sl)*0.95)],1) if sl else 0,
+        }
 
-    # Hallucination: low sim AND low coverage on non-adversarial
-    hall = sum(1 for r in in_scope if r["semantic_similarity"]<0.3 and r["key_term_coverage"]<0.3)
+    # Trust validation
+    trust = {}
+    for level in ["high","medium","low"]:
+        items = [t for t in trust_data if t["level"]==level]
+        trust[level] = {"count":len(items),"correct":sum(1 for t in items if t["correct"]),
+                        "accuracy":pct(sum(1 for t in items if t["correct"]),len(items))}
 
-    # Confidence calibration
-    high_conf = [r for r in in_scope if r["confidence_level"]=="high"]
-    high_conf_correct = sum(1 for r in high_conf if (r.get("hybrid_recall5") or 0)>0)
-    low_conf = [r for r in in_scope if r["confidence_level"]=="low"]
-    low_conf_incorrect = sum(1 for r in low_conf if (r.get("hybrid_recall5") or 0)==0)
+    # Per-type breakdown
+    per_type = {}
+    for qtype in ["factual","conceptual","multi-hop"]:
+        type_items = [d for d in details if d["type"]==qtype]
+        per_type[qtype] = {
+            "count": len(type_items),
+            "avg_sim": avg([d["semantic_sim"] for d in type_items]),
+            "avg_cov": avg([d["coverage"] for d in type_items]),
+            "correct_pct": pct(sum(1 for d in type_items if d["correct"]), len(type_items)),
+        }
 
-    metrics = {
-        "dataset": label,
-        "doc_id": doc_id,
-        "queries": len(dataset),
-        "retrieval": {
-            "baseline_recall3": avg(b_r3), "baseline_recall5": avg(b_r5), "baseline_mrr": avg(b_mrrs),
-            "hybrid_recall3": avg(h_r3), "hybrid_recall5": avg(h_r5), "hybrid_mrr": avg(h_mrrs),
-        },
-        "quality": {
-            "avg_semantic_similarity": avg([r["semantic_similarity"] for r in in_scope]),
-            "factual_sim": avg([r["semantic_similarity"] for r in in_scope if r["type"]=="factual"]),
-            "conceptual_sim": avg([r["semantic_similarity"] for r in in_scope if r["type"]=="conceptual"]),
-            "multihop_sim": avg([r["semantic_similarity"] for r in in_scope if r["type"]=="multi-hop"]),
-            "key_term_coverage": avg([r["key_term_coverage"] for r in in_scope]),
-            "hallucination_rate": round(hall/max(len(in_scope),1)*100, 1),
-        },
-        "adversarial": {
-            "total": len(adversarial),
-            "correct_refusals": sum(1 for r in adversarial if r["correctly_refused"]),
-            "accuracy": round(sum(1 for r in adversarial if r["correctly_refused"])/max(len(adversarial),1)*100, 1),
-        },
-        "confidence_calibration": {
-            "high_conf_total": len(high_conf),
-            "high_conf_correct": high_conf_correct,
-            "high_conf_accuracy": round(high_conf_correct/max(len(high_conf),1)*100, 1),
-            "low_conf_total": len(low_conf),
-            "low_conf_incorrect": low_conf_incorrect,
-        },
-        "latency": {
-            "avg_embed_ms": round(np.mean(lats_embed), 1),
-            "avg_vector_ms": round(np.mean(lats_vec), 1),
-            "avg_hybrid_ms": round(np.mean(lats_hyb), 1),
-            "avg_total_ms": round(np.mean(all_lats), 1),
-            "p50_ms": round(sl[len(sl)//2], 1) if sl else 0,
-            "p95_ms": round(sl[int(len(sl)*0.95)], 1) if sl else 0,
-            "note": "Excludes LLM generation (API-dependent). Retrieval-only pipeline."
-        },
+    # Adversarial
+    adv = [d for d in details if d["type"]=="adversarial"]
+    adv_refused = sum(1 for d in adv if not d["correct"] == False)  # trust: low vec score
+
+    return {
+        "dataset": label, "doc_id": doc_id, "queries": len(dataset),
+        "systems": compiled, "trust": trust, "per_type": per_type,
+        "adversarial": {"total":len(adv),"correct":sum(1 for d in adv if d["correct"])},
+        "details": details
     }
-    return metrics, results
 
 
 async def main():
     from app.rag.embedder import warmup
     warmup()
 
-    ds = json.load(open(BASE/"data/dataset.json"))
+    ds_a = json.load(open(BASE/"data/dataset.json"))
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    print(f"\n{'='*70}\n  CREDIBILITY-FIXED EVALUATION\n{'='*70}")
+    print(f"\n{'='*70}\n  COMPREHENSIVE EVALUATION (3 Systems x 2 Datasets)\n{'='*70}")
 
-    # === Dataset A: Python textbook ===
-    print(f"\n  [Dataset A] Python Textbook (doc_11c024ccf162)")
-    ma, ra = await evaluate_dataset("doc_11c024ccf162", ds, GROUND_TRUTH, "Python Textbook")
+    # Dataset A
+    print(f"\n  [A] Python Textbook (doc_11c024ccf162) — {len(ds_a)} queries")
+    res_a = await evaluate_dataset("doc_11c024ccf162", ds_a, GT_A, "Python Textbook")
 
-    # === Dataset B: check for second doc ===
-    # Find second largest chunk file
-    chunks_dir = Path("storage/chunks")
-    chunk_files = sorted(
-        [f for f in chunks_dir.glob("*.json") if "_bm25" not in f.name and "11c024ccf162" not in f.name],
-        key=lambda f: f.stat().st_size, reverse=True
-    )
+    # Dataset B
+    print(f"\n  [B] AI/ML Notes ({DATASET_B_DOC}) — {len(DATASET_B)} queries")
+    res_b = await evaluate_dataset(DATASET_B_DOC, DATASET_B, {}, "AI/ML Notes")
 
-    mb = None
-    rb = None
-    if chunk_files:
-        doc_b = chunk_files[0].stem
-        print(f"\n  [Dataset B] Second Document ({doc_b})")
-        # For dataset B, use same queries but NO ground truth (measure what we can)
-        gt_b = {}  # No GT for second doc - honest about this
-        mb, rb = await evaluate_dataset(doc_b, ds[:30], gt_b, f"Document B ({doc_b})")
+    # Print results
+    for res in [res_a, res_b]:
+        print(f"\n  [{res['dataset']}]")
+        for s in ["bm25","vector","hybrid"]:
+            m = res["systems"][s]
+            print(f"  {s:8s} | R@3={m['recall3']} R@5={m['recall5']} MRR={m['mrr']} | Sim={m['avg_sim']} Cov={m['avg_cov']} Hall={m['hallucination_pct']}% | Lat={m['avg_lat']}ms p50={m['p50_lat']} p95={m['p95_lat']}")
+        print(f"  Trust: {res['trust']}")
+        print(f"  Per-type: {res['per_type']}")
 
-    # === Print Results ===
-    def print_metrics(m, label):
-        r = m["retrieval"]; q = m["quality"]; a = m["adversarial"]; l = m["latency"]; cc = m["confidence_calibration"]
-        print(f"\n  [{label}]")
-        print(f"  Baseline Recall@3: {r['baseline_recall3']}  |  Recall@5: {r['baseline_recall5']}  |  MRR: {r['baseline_mrr']}")
-        print(f"  Hybrid  Recall@3: {r['hybrid_recall3']}  |  Recall@5: {r['hybrid_recall5']}  |  MRR: {r['hybrid_mrr']}")
-        imp3 = round((r['hybrid_recall3']-r['baseline_recall3'])/max(r['baseline_recall3'],0.001)*100,1)
-        imp5 = round((r['hybrid_recall5']-r['baseline_recall5'])/max(r['baseline_recall5'],0.001)*100,1)
-        print(f"  Improvement: Recall@3 {imp3:+.1f}%  |  Recall@5 {imp5:+.1f}%")
-        print(f"  Semantic Sim: {q['avg_semantic_similarity']}  |  Coverage: {q['key_term_coverage']}  |  Hallucination: {q['hallucination_rate']}%")
-        print(f"  Not-Found: {a['accuracy']}% ({a['correct_refusals']}/{a['total']})")
-        print(f"  Confidence: high={cc['high_conf_total']} ({cc['high_conf_accuracy']}% correct)")
-        print(f"  Latency: embed={l['avg_embed_ms']}ms  vector={l['avg_vector_ms']}ms  hybrid={l['avg_hybrid_ms']}ms  total={l['avg_total_ms']}ms")
-        print(f"  p50={l['p50_ms']}ms  p95={l['p95_ms']}ms  [{l['note']}]")
-
-    print_metrics(ma, "Dataset A: Python Textbook")
-    if mb: print_metrics(mb, "Dataset B: Second Document")
-
-    # === Save everything ===
-    print(f"\n{'='*70}\n  SAVING OUTPUTS\n{'='*70}")
-
-    combined = {"timestamp": ts, "datasets": [ma]}
-    if mb: combined["datasets"].append(mb)
-
-    # Average across datasets
-    if mb:
-        combined["cross_dataset_average"] = {
-            "hybrid_recall3": round((ma["retrieval"]["hybrid_recall3"]+(mb["retrieval"]["hybrid_recall3"] or 0))/2, 4),
-            "hybrid_recall5": round((ma["retrieval"]["hybrid_recall5"]+(mb["retrieval"]["hybrid_recall5"] or 0))/2, 4),
-            "avg_latency_ms": round((ma["latency"]["avg_total_ms"]+mb["latency"]["avg_total_ms"])/2, 1),
-        }
+    # Save
+    combined = {"timestamp":ts, "datasets":[
+        {k:v for k,v in res_a.items() if k!="details"},
+        {k:v for k,v in res_b.items() if k!="details"},
+    ]}
+    # Cross-dataset average (hybrid only, Dataset A has GT)
+    ha, hb = res_a["systems"]["hybrid"], res_b["systems"]["hybrid"]
+    combined["cross_dataset"] = {
+        "hybrid_avg_sim": round((ha["avg_sim"]+hb["avg_sim"])/2, 4),
+        "hybrid_avg_lat": round((ha["avg_lat"]+hb["avg_lat"])/2, 1),
+    }
 
     with open(BASE/"reports/metrics.json","w") as f: json.dump(combined, f, indent=2)
-    with open(BASE/"logs/run.json","w") as f: json.dump({"dataset_a": ra, "dataset_b": rb}, f, indent=2, default=str)
+    with open(BASE/"logs/run.json","w") as f: json.dump({"a":res_a["details"],"b":res_b["details"]}, f, indent=2)
 
-    # CSV
-    with open(BASE/"reports/metrics.csv","w",newline="") as f:
-        w = csv.writer(f); w.writerow(["Dataset","Metric","Value"])
-        for ds_m in combined["datasets"]:
-            lbl = ds_m["dataset"]
-            for cat in ["retrieval","quality","adversarial","latency"]:
-                for k,v in ds_m[cat].items():
-                    w.writerow([lbl, f"{cat}.{k}", v])
-
-    with open(BASE/"reports/comparison.json","w") as f:
-        json.dump({
-            "baseline": {"recall3": ma["retrieval"]["baseline_recall3"], "recall5": ma["retrieval"]["baseline_recall5"], "mrr": ma["retrieval"]["baseline_mrr"]},
-            "hybrid": {"recall3": ma["retrieval"]["hybrid_recall3"], "recall5": ma["retrieval"]["hybrid_recall5"], "mrr": ma["retrieval"]["hybrid_mrr"]},
-            "ground_truth": "independent_manual_chunk_mapping",
-        }, f, indent=2)
-
+    # Comparison CSV
     with open(BASE/"reports/comparison.csv","w",newline="") as f:
-        w = csv.writer(f); w.writerow(["System","Recall@3","Recall@5","MRR"])
-        w.writerow(["Baseline",ma["retrieval"]["baseline_recall3"],ma["retrieval"]["baseline_recall5"],ma["retrieval"]["baseline_mrr"]])
-        w.writerow(["Hybrid",ma["retrieval"]["hybrid_recall3"],ma["retrieval"]["hybrid_recall5"],ma["retrieval"]["hybrid_mrr"]])
+        w = csv.writer(f)
+        w.writerow(["Dataset","System","Recall@3","Recall@5","MRR","Semantic_Sim","Key_Coverage","Hallucination%","Avg_Latency_ms","p50","p95"])
+        for res in [res_a, res_b]:
+            for s in ["bm25","vector","hybrid"]:
+                m = res["systems"][s]
+                w.writerow([res["dataset"],s,m["recall3"],m["recall5"],m["mrr"],m["avg_sim"],m["avg_cov"],m["hallucination_pct"],m["avg_lat"],m["p50_lat"],m["p95_lat"]])
 
-    # === Failure Analysis (expanded) ===
+    # Failures
     failures = []
-    for r in ra:
-        if r["type"] == "adversarial":
-            if not r["correctly_refused"]:
-                failures.append({**r, "failure_category": "false_positive_retrieval", "reason": f"Adversarial query not rejected. Vector score {r['top_vector_score']} above threshold 0.25."})
-        elif r.get("hybrid_recall5") is not None and r["hybrid_recall5"] == 0:
-            failures.append({**r, "failure_category": "retrieval_failure", "reason": "No gold-standard chunk found in top-5 hybrid results."})
-        elif r["semantic_similarity"] < 0.3 and r["key_term_coverage"] < 0.3:
-            failures.append({**r, "failure_category": "hallucination_risk", "reason": f"Low semantic sim ({r['semantic_similarity']}) and low key term coverage ({r['key_term_coverage']})."})
-        elif r["semantic_similarity"] < 0.35:
-            failures.append({**r, "failure_category": "semantic_mismatch", "reason": f"Retrieved relevant chunks but semantic similarity to expected answer is low ({r['semantic_similarity']})."})
-        elif r["confidence_level"] == "high" and r.get("hybrid_recall5",1) == 0:
-            failures.append({**r, "failure_category": "overconfident_miss", "reason": "High confidence but no relevant chunk retrieved."})
+    for d in res_a["details"]:
+        if d["type"]!="adversarial" and not d["correct"]:
+            failures.append({**d, "cat":"retrieval_miss"})
+        elif d["type"]=="adversarial" and not d["correct"]:
+            failures.append({**d, "cat":"false_positive"})
+        elif d["semantic_sim"]<0.3 and d["coverage"]<0.3 and d["type"]!="adversarial":
+            failures.append({**d, "cat":"hallucination_risk"})
 
     with open(BASE/"reports/failures.md","w") as f:
-        f.write("# Failure Analysis Report\n\n")
-        f.write(f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M')} | **Total Failures**: {len(failures)} / {len(ra)} queries\n\n")
-        f.write("## Summary\n\n| Category | Count | Description |\n|:---|:---:|:---|\n")
+        f.write(f"# Failure Analysis\n\n**{len(failures)} failures** / {len(res_a['details'])} queries (Dataset A)\n\n")
         cats = {}
-        for fl in failures: cats[fl["failure_category"]] = cats.get(fl["failure_category"],0)+1
-        descs = {"retrieval_failure":"No gold chunk in top-5","semantic_mismatch":"Low sim to expected answer","hallucination_risk":"Low sim + low coverage","false_positive_retrieval":"Adversarial not rejected","overconfident_miss":"High confidence but wrong"}
-        for c,n in cats.items(): f.write(f"| {c} | {n} | {descs.get(c,'')} |\n")
-        f.write(f"\n## Detailed Examples ({min(len(failures),15)} shown)\n\n")
+        for fl in failures: cats[fl["cat"]] = cats.get(fl["cat"],0)+1
+        f.write("| Category | Count |\n|:---|:---:|\n")
+        for c,n in cats.items(): f.write(f"| {c} | {n} |\n")
+        f.write(f"\n## Examples\n\n")
         for fl in failures[:15]:
-            f.write(f"### {fl['id']}: {fl['query'][:70]}\n")
-            f.write(f"- **Type**: {fl['type']} | **Category**: {fl['failure_category']}\n")
-            f.write(f"- **Reason**: {fl['reason']}\n")
-            f.write(f"- **Semantic Similarity**: {fl['semantic_similarity']} | **Coverage**: {fl['key_term_coverage']}\n")
-            f.write(f"- **Confidence**: {fl['confidence']} ({fl['confidence_level']})\n")
-            f.write(f"- **Top Chunk**: {fl['top_chunk_text'][:100]}...\n")
-            f.write(f"- **Gold Chunks**: {fl.get('gold_chunks',['N/A'])}\n\n")
+            f.write(f"### {fl['id']}: {fl['query'][:60]}\n")
+            f.write(f"- Type: {fl['type']} | Category: {fl['cat']}\n")
+            f.write(f"- Semantic Sim: {fl['semantic_sim']} | Coverage: {fl['coverage']}\n")
+            f.write(f"- Confidence: {fl['confidence']} ({fl['level']})\n\n")
 
-    # Trust formula doc
+    # Trust formula
     with open(BASE/"reports/trust_formula.md","w") as f:
-        f.write("# Trust Layer Formula\n\n")
-        f.write("## Confidence Score Computation\n\n```\nconfidence = 0.4 * norm_vector_score + 0.3 * norm_rrf_score + 0.3 * agreement_overlap\n```\n\n")
-        f.write("### Components\n\n| Signal | Weight | Normalization | Source |\n|:---|:---:|:---|:---|\n")
-        f.write("| Vector similarity | 0.4 | `min(score / 0.5, 1.0)` | FAISS cosine similarity |\n")
-        f.write("| RRF fusion score | 0.3 | `min(score / 0.1, 1.0)` | Reciprocal Rank Fusion |\n")
-        f.write("| Agreement overlap | 0.3 | `overlap(vec_top3, hybrid_top3) / 3` | Cross-system agreement |\n\n")
-        f.write("### Thresholds\n\n| Level | Range | Action |\n|:---|:---:|:---|\n")
-        f.write("| High | > 0.7 | Return answer with sources |\n")
-        f.write("| Medium | 0.4 - 0.7 | Return answer with lower confidence warning |\n")
-        f.write("| Low | < 0.4 | Return 'Not enough information in document' |\n\n")
-        f.write(f"### Calibration (Dataset A)\n\n")
-        f.write(f"- High-confidence queries: {ma['confidence_calibration']['high_conf_total']} ({ma['confidence_calibration']['high_conf_accuracy']}% actually correct)\n")
-        f.write(f"- Low-confidence queries: {ma['confidence_calibration']['low_conf_total']}\n")
+        f.write("# Trust Layer Validation\n\n")
+        f.write("## Formula\n```\nconfidence = 0.4 * norm_vec + 0.3 * norm_rrf + 0.3 * agreement\n```\n\n")
+        f.write("## Calibration Results (Dataset A)\n\n| Level | Threshold | Count | Correct | Accuracy |\n|:---|:---:|:---:|:---:|:---:|\n")
+        for lv in ["high","medium","low"]:
+            t = res_a["trust"][lv]
+            th = "> 0.7" if lv=="high" else ("0.4-0.7" if lv=="medium" else "< 0.4")
+            f.write(f"| {lv} | {th} | {t['count']} | {t['correct']} | {t['accuracy']}% |\n")
 
-    # Figures
-    with open(BASE/"figures/summary_table.md","w") as f:
-        f.write("# Evaluation Results (Independent Ground Truth)\n\n")
-        f.write("> Ground truth: manually mapped chunk IDs, independent of system output\n\n")
-        f.write("## Core Metrics (Dataset A)\n\n| Metric | Value |\n|:---|:---:|\n")
-        r = ma["retrieval"]; q = ma["quality"]
-        f.write(f"| Recall@3 | {r['hybrid_recall3']} |\n| Recall@5 | {r['hybrid_recall5']} |\n| MRR | {r['hybrid_mrr']} |\n")
-        f.write(f"| Semantic Similarity | {q['avg_semantic_similarity']} |\n| Key Term Coverage | {q['key_term_coverage']} |\n")
-        f.write(f"| Hallucination Rate | {q['hallucination_rate']}% |\n| Not-Found Accuracy | {ma['adversarial']['accuracy']}% |\n")
-
-    print(f"  All outputs saved to evaluation/")
+    print(f"\n  All saved to evaluation/")
     print(f"\n{'='*70}\n  DONE\n{'='*70}")
-    return combined
 
 asyncio.run(main())

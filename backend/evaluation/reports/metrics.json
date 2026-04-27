@@ -1,94 +1,171 @@
 {
-  "timestamp": "20260427_214603",
+  "timestamp": "20260427_220336",
   "datasets": [
     {
       "dataset": "Python Textbook",
       "doc_id": "doc_11c024ccf162",
       "queries": 60,
-      "retrieval": {
-        "baseline_recall3": 0.5933,
-        "baseline_recall5": 0.7,
-        "baseline_mrr": 0.7807,
-        "hybrid_recall3": 0.615,
-        "hybrid_recall5": 0.73,
-        "hybrid_mrr": 0.7907
+      "systems": {
+        "bm25": {
+          "recall3": 0.5667,
+          "recall5": 0.655,
+          "mrr": 0.8,
+          "avg_sim": 0.5701,
+          "avg_cov": 0.4857,
+          "hallucination_pct": 8.0,
+          "avg_lat": 0.3,
+          "p50_lat": 0.0,
+          "p95_lat": 1.5
+        },
+        "vector": {
+          "recall3": 0.5933,
+          "recall5": 0.7,
+          "mrr": 0.7807,
+          "avg_sim": 0.6423,
+          "avg_cov": 0.4973,
+          "hallucination_pct": 2.0,
+          "avg_lat": 0.2,
+          "p50_lat": 0.0,
+          "p95_lat": 1.0
+        },
+        "hybrid": {
+          "recall3": 0.6083,
+          "recall5": 0.735,
+          "mrr": 0.7847,
+          "avg_sim": 0.6023,
+          "avg_cov": 0.5023,
+          "hallucination_pct": 2.0,
+          "avg_lat": 74.3,
+          "p50_lat": 71.9,
+          "p95_lat": 102.4
+        }
       },
-      "quality": {
-        "avg_semantic_similarity": 0.6082,
-        "factual_sim": 0.5744,
-        "conceptual_sim": 0.649,
-        "multihop_sim": 0.5943,
-        "key_term_coverage": 0.519,
-        "hallucination_rate": 4.0
+      "trust": {
+        "high": {
+          "count": 47,
+          "correct": 45,
+          "accuracy": 95.7
+        },
+        "medium": {
+          "count": 10,
+          "correct": 7,
+          "accuracy": 70.0
+        },
+        "low": {
+          "count": 3,
+          "correct": 3,
+          "accuracy": 100.0
+        }
+      },
+      "per_type": {
+        "factual": {
+          "count": 20,
+          "avg_sim": 0.5838,
+          "avg_cov": 0.59,
+          "correct_pct": 95.0
+        },
+        "conceptual": {
+          "count": 20,
+          "avg_sim": 0.6268,
+          "avg_cov": 0.4458,
+          "correct_pct": 95.0
+        },
+        "multi-hop": {
+          "count": 10,
+          "avg_sim": 0.5902,
+          "avg_cov": 0.44,
+          "correct_pct": 100.0
+        }
       },
       "adversarial": {
         "total": 10,
-        "correct_refusals": 7,
-        "accuracy": 70.0
-      },
-      "confidence_calibration": {
-        "high_conf_total": 47,
-        "high_conf_correct": 44,
-        "high_conf_accuracy": 93.6,
-        "low_conf_total": 0,
-        "low_conf_incorrect": 0
-      },
-      "latency": {
-        "avg_embed_ms": 22.6,
-        "avg_vector_ms": 0.1,
-        "avg_hybrid_ms": 73.5,
-        "avg_total_ms": 96.1,
-        "p50_ms": 87.5,
-        "p95_ms": 166.4,
-        "note": "Excludes LLM generation (API-dependent). Retrieval-only pipeline."
+        "correct": 7
       }
     },
     {
-      "dataset": "Document B (doc_1ad23bd9b7af)",
-      "doc_id": "doc_1ad23bd9b7af",
-      "queries": 30,
-      "retrieval": {
-        "baseline_recall3": 0,
-        "baseline_recall5": 0,
-        "baseline_mrr": 0,
-        "hybrid_recall3": 0,
-        "hybrid_recall5": 0,
-        "hybrid_mrr": 0
+      "dataset": "AI/ML Notes",
+      "doc_id": "doc_cdda7fe45c88",
+      "queries": 20,
+      "systems": {
+        "bm25": {
+          "recall3": 0,
+          "recall5": 0,
+          "mrr": 0,
+          "avg_sim": 0,
+          "avg_cov": 0,
+          "hallucination_pct": 0,
+          "avg_lat": 0.0,
+          "p50_lat": 0.0,
+          "p95_lat": 0.0
+        },
+        "vector": {
+          "recall3": 0,
+          "recall5": 0,
+          "mrr": 0,
+          "avg_sim": 0.6924,
+          "avg_cov": 0.4472,
+          "hallucination_pct": 0.0,
+          "avg_lat": 0.1,
+          "p50_lat": 0.0,
+          "p95_lat": 1.0
+        },
+        "hybrid": {
+          "recall3": 0,
+          "recall5": 0,
+          "mrr": 0,
+          "avg_sim": 0.6924,
+          "avg_cov": 0.4472,
+          "hallucination_pct": 0.0,
+          "avg_lat": 82.6,
+          "p50_lat": 71.8,
+          "p95_lat": 214.5
+        }
       },
-      "quality": {
-        "avg_semantic_similarity": 0.5876,
-        "factual_sim": 0.5781,
-        "conceptual_sim": 0.6064,
-        "multihop_sim": 0,
-        "key_term_coverage": 0.5684,
-        "hallucination_rate": 6.7
+      "trust": {
+        "high": {
+          "count": 17,
+          "correct": 0,
+          "accuracy": 0.0
+        },
+        "medium": {
+          "count": 2,
+          "correct": 1,
+          "accuracy": 50.0
+        },
+        "low": {
+          "count": 1,
+          "correct": 1,
+          "accuracy": 100.0
+        }
+      },
+      "per_type": {
+        "factual": {
+          "count": 10,
+          "avg_sim": 0.7707,
+          "avg_cov": 0.6,
+          "correct_pct": 0.0
+        },
+        "conceptual": {
+          "count": 5,
+          "avg_sim": 0.5676,
+          "avg_cov": 0.05,
+          "correct_pct": 0.0
+        },
+        "multi-hop": {
+          "count": 3,
+          "avg_sim": 0.6398,
+          "avg_cov": 0.6,
+          "correct_pct": 0.0
+        }
       },
       "adversarial": {
-        "total": 0,
-        "correct_refusals": 0,
-        "accuracy": 0.0
-      },
-      "confidence_calibration": {
-        "high_conf_total": 27,
-        "high_conf_correct": 0,
-        "high_conf_accuracy": 0.0,
-        "low_conf_total": 0,
-        "low_conf_incorrect": 0
-      },
-      "latency": {
-        "avg_embed_ms": 21.1,
-        "avg_vector_ms": 0.1,
-        "avg_hybrid_ms": 65.0,
-        "avg_total_ms": 86.1,
-        "p50_ms": 82.2,
-        "p95_ms": 119.5,
-        "note": "Excludes LLM generation (API-dependent). Retrieval-only pipeline."
+        "total": 2,
+        "correct": 2
       }
     }
   ],
-  "cross_dataset_average": {
-    "hybrid_recall3": 0.3075,
-    "hybrid_recall5": 0.365,
-    "avg_latency_ms": 91.1
+  "cross_dataset": {
+    "hybrid_avg_sim": 0.6473,
+    "hybrid_avg_lat": 78.4
   }
 }
