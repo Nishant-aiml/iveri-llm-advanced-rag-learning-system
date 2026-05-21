@@ -1,4 +1,10 @@
-"""Granular concurrency primitives and in-memory caches."""
+"""Granular concurrency primitives and in-memory caches.
+
+AUTHORITATIVE SOURCE — all modules import from here.
+shared/caching/memory_store.py re-exports everything from this module for the
+new modular architecture; keeping them in sync is not required since both point
+to the same Python objects at runtime.
+"""
 import asyncio
 import threading
 import time

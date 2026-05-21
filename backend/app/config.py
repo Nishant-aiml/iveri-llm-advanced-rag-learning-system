@@ -1,4 +1,8 @@
-"""Central configuration for the IVERI LLM — Advanced RAG System."""
+"""Central configuration for the IVERI LLM — Advanced RAG System.
+
+Environment variables are read once at startup.
+All feature modules import from here — never from .env directly.
+"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -20,7 +24,11 @@ for d in [STORAGE_DIR, FAISS_INDEX_DIR, CHUNKS_DIR, UPLOAD_DIR, LIBRARY_DIR, EVA
 # --- Database ---
 DATABASE_URL = f"sqlite:///{BASE_DIR / 'learning_engine.db'}"
 
-# --- LLM ---
+# --- Universal LLM Router ---
+# Set to: sarvam | openai | gemini | anthropic | groq | ollama | openrouter
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "sarvam")
+
+# --- Sarvam (default provider) ---
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
 SARVAM_API_URL = os.getenv("SARVAM_API_URL", "https://api.sarvam.ai/v1/chat/completions")
 # Sarvam chat models — UI / requests use `llm_variant`: "105b" | "30b"
@@ -31,6 +39,14 @@ SARVAM_MODEL = os.getenv("SARVAM_MODEL", SARVAM_MODEL_105B)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 # Slightly higher on explicit refresh/regenerate (variation without chaos)
 LLM_REFRESH_TEMPERATURE = float(os.getenv("LLM_REFRESH_TEMPERATURE", "0.4"))
+
+# --- Pipeline Feature Flags ---
+# Set any of these to "false" in .env to disable the feature.
+ENABLE_RERANKER = os.getenv("ENABLE_RERANKER", "true").lower() == "true"
+ENABLE_MMR = os.getenv("ENABLE_MMR", "true").lower() == "true"
+ENABLE_QUERY_EXPANSION = os.getenv("ENABLE_QUERY_EXPANSION", "true").lower() == "true"
+
+
 
 
 def normalize_llm_variant(raw: str | None) -> str:

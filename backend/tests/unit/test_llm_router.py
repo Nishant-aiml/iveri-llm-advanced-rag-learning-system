@@ -1,0 +1,31 @@
+"""Unit tests — LLM Router."""
+import pytest
+
+
+def test_llm_router_default_provider():
+    """LLM Router defaults to Sarvam when LLM_PROVIDER is unset."""
+    import os
+    os.environ.pop("LLM_PROVIDER", None)
+    from app.modules.llm_router.router import LLMRouter
+    router = LLMRouter()
+    assert router.provider.provider_name == "sarvam"
+
+
+def test_llm_router_switch_provider():
+    """LLMRouter.switch_provider() changes the active provider."""
+    from app.modules.llm_router.router import LLMRouter
+    router = LLMRouter()
+    # Switching to groq returns a GroqProvider
+    router.switch_provider("groq")
+    assert router.provider.provider_name == "groq"
+    # Switch back to sarvam
+    router.switch_provider("sarvam")
+    assert router.provider.provider_name == "sarvam"
+
+
+def test_llm_router_unknown_provider_falls_back():
+    """Unknown provider name falls back to Sarvam with a warning."""
+    from app.modules.llm_router.router import LLMRouter
+    router = LLMRouter()
+    router.switch_provider("banana_provider")
+    assert router.provider.provider_name == "sarvam"

@@ -237,7 +237,7 @@ def _diverse_by_doc(chunks: list[dict], max_total: int = MMR_MAX, max_per_doc: i
 
 async def retrieve_context(user_id: str, query: str, scope_doc_id: str | None = None) -> list[dict]:
     """Hybrid retrieval across all ready user documents; returns top chunks with doc_id set."""
-    from app.api.routes import _ensure_doc_assets_ready
+    from app.shared.utils.doc_utils import _ensure_doc_assets_ready
 
     db = SessionLocal()
     try:
