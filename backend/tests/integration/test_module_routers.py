@@ -32,6 +32,11 @@ def test_health_endpoint_registered():
 
 def test_llm_router_singleton():
     """The llm_router singleton is accessible globally."""
+    import os
     from app.modules.llm_router import llm_router
     assert llm_router is not None
-    assert llm_router.provider.provider_name == "sarvam"
+    expected = os.getenv("LLM_PROVIDER", "sarvam").strip().lower()
+    if expected == "balanced":
+        assert llm_router.provider.provider_name == "gemini"
+    else:
+        assert llm_router.provider.provider_name == expected

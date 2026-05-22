@@ -161,7 +161,7 @@ class LLMRouter:
             "answer": f"All LLM providers in fallback chain failed. Last error: {last_error}",
             "source_chunks": [],
             "cached": False,
-            "llm_model": active_name,
+            "llm_model": primary_name,
         }
 
 
