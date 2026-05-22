@@ -64,8 +64,77 @@ def _save_report_to_db(doc_id: str, report: dict):
         db.close()
 
 
+def _save_report_to_file(doc_id: str, report: dict, suffix: str = ""):
+    """Save evaluation report as a JSON file in storage/evaluation/."""
+    try:
+        storage_dir = Path(__file__).resolve().parents[2] / "storage" / "evaluation"
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Add timestamp to report
+        from datetime import datetime, timezone
+        report = report.copy()
+        if "timestamp" not in report:
+            report["timestamp"] = datetime.now(timezone.utc).isoformat()
+
+        timestamp_val = int(time.time())
+        filename = f"eval_{doc_id}_{timestamp_val}{suffix}.json"
+        file_path = storage_dir / filename
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+            
+        logger.info(f"Evaluation JSON report saved to file: {file_path}")
+        
+        # Save a copy as latest
+        latest_filename = f"eval_{doc_id}_latest{suffix}.json"
+        latest_path = storage_dir / latest_filename
+        with open(latest_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        logger.info(f"Evaluation JSON report saved as latest: {latest_path}")
+    except Exception as e:
+        logger.error(f"Failed to save evaluation report JSON file: {e}")
+
+
 def get_latest_report(doc_id: str) -> dict | None:
-    """Get the latest evaluation report from SQLite."""
+    """Get the latest evaluation report from SQLite or JSON file."""
+    # 1. Try to read from latest JSON file first
+    try:
+        storage_dir = Path(__file__).resolve().parents[2] / "storage" / "evaluation"
+        latest_path = storage_dir / f"eval_{doc_id}_latest.json"
+        if latest_path.exists():
+            with open(latest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            ablation = data.get("ablation", {})
+            lat = data.get("latency", {})
+            return {
+                "doc_id": doc_id,
+                "recall@5": {
+                    "baseline": ablation.get("baseline_recall_at_5", 0),
+                    "hybrid": ablation.get("hybrid_recall_at_5", 0),
+                    "reranked": ablation.get("reranked_recall_at_5", 0),
+                },
+                "mrr": {
+                    "baseline": ablation.get("baseline_mrr", 0),
+                    "hybrid": ablation.get("hybrid_mrr", 0),
+                    "reranked": ablation.get("reranked_mrr", 0),
+                },
+                "improvement": data.get("improvement", {}),
+                "not_found_accuracy": data.get("not_found_accuracy", 0),
+                "reranker_accuracy_improvement": data.get("reranker_impact", {}).get("accuracy_improvement_rate", 0),
+                "chunk_quality_score": data.get("chunk_quality", {}).get("quality_score", 0),
+                "latency": {
+                    "avg_retrieval_ms": lat.get("avg_hybrid_ms", 0),
+                    "avg_rerank_ms": lat.get("avg_rerank_ms", 0),
+                    "avg_llm_ms": lat.get("avg_llm_ms", 0),
+                },
+                "hallucination_rate": data.get("hallucination_rate", 0.0),
+                "hallucination_logs": data.get("hallucination_logs", []),
+                "timestamp": data.get("timestamp"),
+            }
+    except Exception as e:
+        logger.error(f"Failed to load latest JSON report: {e}")
+
+    # Fallback to SQLite DB
     db = SessionLocal()
     try:
         row = db.query(EvaluationReport).filter(
@@ -184,6 +253,11 @@ async def run_evaluation(doc_id: str, dataset: list[dict] = None) -> dict:
     lat_embed, lat_vector, lat_hybrid, lat_rerank, lat_llm = [], [], [], [], []
     details = []
 
+    # For hallucination tracking
+    answers_for_hallucination = []
+    contexts_for_hallucination = []
+    hallucination_logs = []
+
     # For reranker accuracy measurement
     all_hybrid_ids = []
     all_reranked_ids = []
@@ -251,6 +325,22 @@ async def run_evaluation(doc_id: str, dataset: list[dict] = None) -> dict:
                                     f"{context}\n\nQuestion: {q}")
             lat_llm.append(time.time() - t0)
             answer = result.get("answer", "")
+
+            if answer:
+                answers_for_hallucination.append(answer)
+                contexts_for_hallucination.append(context)
+                
+                answer_words = set(answer.lower().split())
+                context_words = set(context.lower().split())
+                if answer_words:
+                    overlap = len(answer_words & context_words) / len(answer_words)
+                    if overlap < 0.3:
+                        hallucination_logs.append({
+                            "question": q,
+                            "context": context[:300] + ("..." if len(context) > 300 else ""),
+                            "answer": answer[:300] + ("..." if len(answer) > 300 else ""),
+                            "word_overlap": round(overlap, 4)
+                        })
         else:
             answer = "Not enough context in the document."
 
@@ -314,6 +404,9 @@ async def run_evaluation(doc_id: str, dataset: list[dict] = None) -> dict:
     chunk_quality_data = validate_chunks(doc_id)
     chunk_quality_score = chunk_quality_data.get("quality_score", 0)
 
+    # --- HALLUCINATION RATE ---
+    hall_rate = hallucination_rate(answers_for_hallucination, contexts_for_hallucination)
+
     report = {
         "ablation": ablation,
         "improvement": {"hybrid_vs_baseline_pct": hybrid_imp, "reranked_vs_hybrid_pct": reranked_imp},
@@ -323,6 +416,8 @@ async def run_evaluation(doc_id: str, dataset: list[dict] = None) -> dict:
         "latency": latency,
         "questions_evaluated": eval_count,
         "not_found_tested": nf_total,
+        "hallucination_rate": round(hall_rate, 4),
+        "hallucination_logs": hallucination_logs,
         "details": details,
     }
 
@@ -342,9 +437,11 @@ async def run_evaluation(doc_id: str, dataset: list[dict] = None) -> dict:
     logger.info(f"Avg Rerank Latency: {latency['avg_rerank_ms']}ms")
     logger.info(f"\nLatency: retrieval={latency['avg_hybrid_ms']}ms  rerank={latency['avg_rerank_ms']}ms  llm={latency['avg_llm_ms']}ms")
     logger.info(f"\nChunk Quality Score: {chunk_quality_score:.1%}")
+    logger.info(f"Hallucination Rate: {hall_rate * 100:.1f}%")
     logger.info("=" * 60)
 
     _save_report_to_db(doc_id, report)
+    _save_report_to_file(doc_id, report)
     return report
 
 
@@ -465,6 +562,7 @@ async def run_multi_evaluation(doc_id: str, runs: int = 3) -> dict:
     logger.info(f"  dataset_variation=True  sampling_ratio={SAMPLING_RATIO}")
     logger.info(f"{'=' * 60}")
 
+    _save_report_to_file(doc_id, stable_report, suffix="_stable")
     return stable_report
 
 

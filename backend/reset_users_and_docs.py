@@ -38,7 +38,7 @@ def main() -> None:
         db.query(Document).delete()
         db.query(User).delete()
         db.commit()
-        print("✅ Deleted all users, documents, and related quiz/leaderboard records.")
+        print("[OK] Deleted all users, documents, and related quiz/leaderboard records.")
     finally:
         db.close()
 

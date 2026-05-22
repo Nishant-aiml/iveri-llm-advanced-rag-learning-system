@@ -29,6 +29,7 @@ _queue: asyncio.PriorityQueue[tuple[float, int, str]] = asyncio.PriorityQueue()
 _workers: dict[int, asyncio.Task] = {}
 _scaler_task: asyncio.Task | None = None
 _running = False
+_busy_workers: set[int] = set()
 
 # Pending entries tracked for queue position/wait-time calculation.
 _pending: dict[str, dict[str, Any]] = {}
@@ -52,7 +53,15 @@ async def _worker_loop(worker_id: int):
     logger.info("[queue] worker-%s started", worker_id)
     try:
         while _running:
+            # Check if we should scale down gracefully before waiting for next job
+            target = _target_workers()
+            if len(_workers) > target:
+                logger.info("[queue] worker-%s retiring gracefully (workers count %s > target %s)", worker_id, len(_workers), target)
+                _workers.pop(worker_id, None)
+                break
+
             priority, seq, doc_id = await _queue.get()
+            _busy_workers.add(worker_id)
             try:
                 async with _pending_lock:
                     entry = _pending.pop(doc_id, None)
@@ -63,10 +72,12 @@ async def _worker_loop(worker_id: int):
             except Exception as e:
                 logger.error("[queue] worker-%s failed item: %s", worker_id, e, exc_info=True)
             finally:
+                _busy_workers.discard(worker_id)
                 _queue.task_done()
     except asyncio.CancelledError:
         pass
     finally:
+        _busy_workers.discard(worker_id)
         logger.info("[queue] worker-%s stopped", worker_id)
 
 
@@ -78,9 +89,12 @@ async def _ensure_worker_count(desired: int):
         while wid in _workers:
             wid += 1
         _workers[wid] = asyncio.create_task(_worker_loop(wid))
-    # Scale down
+    # Scale down (only cancel idle workers)
     while len(_workers) > desired:
-        wid = sorted(_workers.keys())[-1]
+        idle_wids = [wid for wid in _workers if wid not in _busy_workers]
+        if not idle_wids:
+            break
+        wid = idle_wids[-1]
         task = _workers.pop(wid)
         task.cancel()
         try:

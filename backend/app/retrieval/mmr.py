@@ -72,5 +72,5 @@ def mmr_filter(
             break
 
     result = [chunks[i] for i in selected_indices]
-    logger.info(f"MMR filter: {len(chunks)} → {len(result)} chunks (λ={lambda_param})")
+    logger.info(f"MMR filter: {len(chunks)} -> {len(result)} chunks (lambda={lambda_param})")
     return result

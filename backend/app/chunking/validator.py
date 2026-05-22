@@ -161,7 +161,7 @@ def validate_chunks(doc_id: str) -> dict:
         f"\nChunk Quality Score: {report['quality_pct']}%\n"
         f"  Valid (4/5 checks): {valid_count}/{total}\n"
         f"  Duplicate Chunks Removed: {duplicate_count} ({report['duplicate_pct']}%)\n"
-        f"  Word count ≥ 120: {word_count_pass} ({report['checks']['word_count_pct']}%)\n"
+        f"  Word count >= 120: {word_count_pass} ({report['checks']['word_count_pct']}%)\n"
         f"  Sentence ending: {sentence_end_pass} ({report['checks']['sentence_end_pct']}%)\n"
         f"  Answerable: {answerable_pass} ({report['checks']['answerable_pct']}%)\n"
         f"  Not duplicate: {not_duplicate} ({report['checks']['not_duplicate_pct']}%)"

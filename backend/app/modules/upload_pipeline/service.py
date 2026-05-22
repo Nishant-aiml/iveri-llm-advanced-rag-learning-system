@@ -400,9 +400,9 @@ async def delete_document_all(doc_id: str) -> dict:
     Equivalent to the DELETE /doc/{doc_id} handler in the legacy routes.py.
     """
     from app.state import doc_locks, llm_cache
-    from app.indexing.builder import delete_vector_index
-    from app.retrieval.bm25 import delete_bm25_index
-    from app.indexing.builder import clear_cached
+    from app.indexing.vector_index import delete_vector_index
+    from app.indexing.bm25_index import delete_bm25_index
+    from app.generators.cache import clear_cached
     from app.core.library import remove_from_library
     from app.core.course_structure import delete_course_structure
     from app.core.unified_hierarchy import delete_doc_hierarchy
@@ -423,10 +423,26 @@ async def delete_document_all(doc_id: str) -> dict:
     bm25_indexes.pop(doc_id, None)
 
     # 4. Delete raw uploaded file(s)
+    import gc
+    import time
     for ext in ALLOWED_EXTENSIONS:
         file_path = UPLOAD_DIR / f"{doc_id}{ext}"
         if file_path.exists():
-            file_path.unlink()
+            gc.collect()
+            deleted = False
+            for attempt in range(5):
+                try:
+                    file_path.unlink()
+                    deleted = True
+                    break
+                except PermissionError:
+                    gc.collect()
+                    time.sleep(0.2)
+            if not deleted:
+                logger.warning(
+                    "Could not delete locked file %s (being used by another process). Proceeding with database cleanup.",
+                    file_path
+                )
 
     # 5. Remove from content library and course hierarchy
     remove_from_library(doc_id)

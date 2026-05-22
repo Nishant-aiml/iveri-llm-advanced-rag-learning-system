@@ -6,7 +6,7 @@ import re
 import logging
 from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE
 from app.retrieval.hybrid import retrieve_for_task, get_chunks_by_ordered_ids
-from app.rag.llm_client import call_llm
+from app.modules.llm_router.router import llm_router
 from app.generators.prompts import get_prompt, build_refresh_instruction
 from app.generators.cache import get_cached, set_cached
 from app.retrieval.mmr import mmr_filter
@@ -159,11 +159,11 @@ async def generate_content(
     for attempt in range(max_attempts):
         prompt = base_prompt + strict_suffixes[min(attempt, len(strict_suffixes) - 1)]
         logger.info("[CONTENT PROMPT] doc=%s type=%s attempt=%s len=%s", doc_id, content_type, attempt + 1, len(prompt))
-        result = await call_llm(
-            doc_id,
-            content_type,
-            prompt,
-            context,
+        result = await llm_router.generate(
+            doc_id=doc_id,
+            task_type=content_type,
+            prompt=prompt,
+            context=context,
             use_cache=False,
             llm_variant=llm_variant,
             temperature=llm_temp,
@@ -216,11 +216,11 @@ async def ask_mentor(
         full_context = f"Previous conversation:\n{history_text}\n\nDocument context:\n{context}"
 
     prompt = get_prompt("mentor")
-    result = await call_llm(
-        doc_id,
-        "mentor",
-        prompt,
-        f"{full_context}\n\nStudent's question: {question}",
+    result = await llm_router.generate(
+        doc_id=doc_id,
+        task_type="mentor",
+        prompt=prompt,
+        context=f"{full_context}\n\nStudent's question: {question}",
         llm_variant=llm_variant,
     )
 

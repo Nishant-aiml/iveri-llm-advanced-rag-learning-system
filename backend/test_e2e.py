@@ -2,6 +2,8 @@
 Tests all 11 endpoints, parser pipeline, cache behavior, latency, and error handling.
 """
 import sys, os, time, json, asyncio, hashlib
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import httpx
@@ -243,12 +245,12 @@ def main():
     qs = d.get("questions", [])
     test("Quiz has questions", len(qs) > 0, f"count={len(qs)}")
     if qs:
-        test("Questions have 'q' field", all("q" in q for q in qs))
+        test("Questions have 'question' field", all("question" in q or "q" in q for q in qs))
         test("Questions have options", all("options" in q for q in qs))
-        test("Questions have answer", all("answer" in q for q in qs))
+        test("Questions have correct_answer", all("correct_answer" in q or "answer" in q for q in qs))
 
         # Submit random answers
-        answers = [q.get("answer", "A") for q in qs]  # Perfect score
+        answers = [q.get("correct_answer", q.get("answer", "A")) for q in qs]  # Perfect score
         r = c.post(f"{BASE}/quiz/submit", json={
             "doc_id": DOC_ID, "user_id": USER, "questions": qs, "answers": answers
         })
@@ -271,8 +273,7 @@ def main():
         d = r.json()
         test(f"Generate {gtype}", r.status_code == 200, latency=lat)
         test(f"  Response < 20 sec", lat < 20, f"{lat:.1f}s")
-        # Check content exists
-        has_content = bool(d.get(gtype) or d.get("raw") or d.get("summary") or d.get("slides") or d.get("facts") or d.get("flashcards"))
+        has_content = bool(d.get(gtype) or d.get("raw") or d.get("summary") or d.get("slides") or d.get("facts") or d.get("flashcards") or d.get("bullets"))
         test(f"  Has content", has_content, str(list(d.keys()))[:80])
 
     # Test invalid content type
@@ -324,7 +325,7 @@ def main():
     test("JS serves 200", r.status_code == 200)
     r = c.get("http://127.0.0.1:8000/")
     test("Frontend serves 200", r.status_code == 200)
-    test("Frontend has StudyHub", "StudyHub" in r.text)
+    test("Frontend has IVERI LLM", "IVERI LLM" in r.text)
 
     # ==========================================
     # 15. DELETE ENDPOINT

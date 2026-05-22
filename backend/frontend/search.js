@@ -92,13 +92,14 @@ async function doSearch() {
         data-node-id="${esc(nodeId)}"
         data-chunk-id="${esc(chunkId)}"
         data-page="${esc(r.page || 1)}"
+        data-snippet="${esc(r.snippet || r.text || '')}"
         onclick="onResultCardClick(this)"
       >
         <div class="sr-g-title">${esc(r.title || r.section || r.doc_id)}</div>
         <div class="sr-g-url">📄 ${esc(r.filename || r.doc_id)} · Page ${r.page || 1}${r.section_path ? ' · ' + esc(r.section_path) : ''}</div>
         <div class="sr-g-snippet">${highlight(r.snippet || r.text || '', q)}</div>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-ghost btn-sm" type="button" onclick="event.stopPropagation(); openPdfViewer('${encodeURIComponent(r.doc_id)}', ${r.page || 1}, '${encodeURIComponent(currentQuery || '')}')">Open in PDF</button>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="event.stopPropagation(); const card = this.closest('.sr-google-card'); openPdfViewer(card.dataset.docId, card.dataset.page, currentQuery || '', card.dataset.snippet);">Open in PDF</button>
         </div>
       </div>`;
     }
@@ -164,23 +165,26 @@ function onResultCardClick(cardEl) {
   const nodeId = cardEl?.dataset?.nodeId || '';
   const chunkId = cardEl?.dataset?.chunkId || '';
   const page = parseInt(cardEl?.dataset?.page || '1', 10) || 1;
+  const snippet = cardEl?.dataset?.snippet || '';
   if (!docId || !nodeId) return;
 
   // Open PDF at the page containing the match (fragment navigation).
   // Even if highlighting fails, the page jump should still work.
   try {
-    openPdfViewer(docId, page, currentQuery || '');
+    openPdfViewer(docId, page, currentQuery || '', snippet);
   } catch (e) {}
 
   loadNodeChunksAndScroll(docId, nodeId, chunkId);
 }
 
-function openPdfViewer(docId, page = 1, query = '') {
+function openPdfViewer(docId, page = 1, query = '', snippet = '') {
   const q = new URLSearchParams();
   q.set('doc_id', decodeURIComponent(String(docId || '')));
   q.set('page', String(parseInt(page, 10) || 1));
   const cleanQ = decodeURIComponent(String(query || ''));
   if (cleanQ) q.set('query', cleanQ);
+  const cleanSnippet = decodeURIComponent(String(snippet || ''));
+  if (cleanSnippet) q.set('snippet', cleanSnippet);
   window.open(`/pdf-viewer.html?${q.toString()}`, '_blank', 'noopener');
 }
 

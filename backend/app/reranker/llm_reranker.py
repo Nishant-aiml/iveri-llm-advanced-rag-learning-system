@@ -5,7 +5,8 @@ import json
 import re
 import time
 import logging
-from app.rag.llm_client import call_llm
+import asyncio
+from app.modules.llm_router.router import llm_router
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ async def rerank_chunks(
     min_candidates: int = 5,
     score_gap_threshold: float = 0.02,
 ) -> list[dict]:
-    """Conditionally rerank chunks using Sarvam-M.
+    """Conditionally rerank chunks using Sarvam-M or active LLM router.
 
     Only triggers when:
     1. Candidates >= min_candidates
@@ -55,29 +56,38 @@ async def rerank_chunks(
 
     t_start = time.time()
     rerank_limit = min(len(chunks), 8)
-    scored_chunks = []
 
-    for i, chunk in enumerate(chunks[:rerank_limit]):
-        try:
-            prompt = RERANK_PROMPT.format(
-                query=query,
-                chunk_text=chunk["text"][:400]
-            )
-            result = await call_llm(doc_id, f"rerank_{i}", prompt, "")
-            answer = result.get("answer", "").strip()
-            score = _parse_score(answer)
+    sem = asyncio.Semaphore(3)
 
-            chunk_copy = chunk.copy()
-            chunk_copy["rerank_score"] = score
-            scored_chunks.append(chunk_copy)
+    async def score_single_chunk(i: int, chunk: dict) -> dict:
+        async with sem:
+            try:
+                prompt = RERANK_PROMPT.format(
+                    query=query,
+                    chunk_text=chunk["text"][:400]
+                )
+                result = await llm_router.generate(
+                    doc_id=doc_id,
+                    task_type=f"rerank_{i}",
+                    prompt=prompt,
+                    context=""
+                )
+                answer = result.get("answer", "").strip()
+                score = _parse_score(answer)
 
-            logger.debug(f"  Rerank chunk {chunk['chunk_id']}: raw='{answer}' → score={score}")
+                chunk_copy = chunk.copy()
+                chunk_copy["rerank_score"] = score
+                logger.debug(f"  Rerank chunk {chunk['chunk_id']}: raw='{answer}' → score={score}")
+                return chunk_copy
 
-        except Exception as e:
-            logger.warning(f"Rerank failed for chunk {i}: {e}")
-            chunk_copy = chunk.copy()
-            chunk_copy["rerank_score"] = scores[i] * 10 if i < len(scores) else 5.0
-            scored_chunks.append(chunk_copy)
+            except Exception as e:
+                logger.warning(f"Rerank failed for chunk {i}: {e}")
+                chunk_copy = chunk.copy()
+                chunk_copy["rerank_score"] = scores[i] * 10 if i < len(scores) else 5.0
+                return chunk_copy
+
+    tasks = [score_single_chunk(i, chunk) for i, chunk in enumerate(chunks[:rerank_limit])]
+    scored_chunks = list(await asyncio.gather(*tasks))
 
     scored_chunks.sort(key=lambda c: c.get("rerank_score", 0), reverse=True)
     scored_chunks.extend(chunks[rerank_limit:])

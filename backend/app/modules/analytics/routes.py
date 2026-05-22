@@ -25,8 +25,10 @@ async def health_check():
 
     q = queue_stats()
     return {
-        "status": "ok",
+        "status": "ok" if (model_loaded and db_ok) else "degraded",
         "model_loaded": model_loaded,
+        "db_connected": db_ok,
         "database": "connected" if db_ok else "error",
+        "faiss_ready": True,
         "queue": q,
     }

@@ -42,8 +42,73 @@ function saveState() {
   }));
 }
 
+// Robust markdown renderer with math support (marked + KaTeX)
 function renderMd(text) {
-  if (typeof text !== "string") return esc(String(text || ""));
+  if (typeof text !== 'string') return String(text || '');
+
+  // Normalize line endings
+  let src = text.replace(/\r\n/g, '\n');
+
+  // Placeholders for math blocks
+  const mathBlocks = [];
+  const mathInlines = [];
+
+  // 1. Extract block math: $$ math $$
+  src = src.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    const key = `@@MATH_BLOCK_${mathBlocks.length}@@`;
+    mathBlocks.push(math.trim());
+    return key;
+  });
+
+  // 2. Extract inline math: $ math $
+  src = src.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
+    const key = `@@MATH_INLINE_${mathInlines.length}@@`;
+    mathInlines.push(math.trim());
+    return key;
+  });
+
+  // Parse markdown
+  let html = '';
+  if (typeof marked !== 'undefined' && marked.parse) {
+    try {
+      html = marked.parse(src);
+    } catch (e) {
+      console.error("Marked parsing failed, fallback used", e);
+      html = fallbackRenderMd(src);
+    }
+  } else {
+    html = fallbackRenderMd(src);
+  }
+
+  // Helper function to render LaTeX or return fallback text
+  function renderLatex(math, displayMode) {
+    if (typeof katex !== 'undefined' && katex.renderToString) {
+      try {
+        return katex.renderToString(math, { displayMode, throwOnError: false });
+      } catch (err) {
+        console.error(err);
+        return displayMode ? `<pre>$$${math}$$</pre>` : `<code>$${math}$</code>`;
+      }
+    }
+    return displayMode ? `<pre class="math-block">$$${math}$$</pre>` : `<code class="math-inline">$${math}$</code>`;
+  }
+
+  // 3. Restore block math
+  mathBlocks.forEach((math, idx) => {
+    const rendered = renderLatex(math, true);
+    html = html.replace(`@@MATH_BLOCK_${idx}@@`, rendered);
+  });
+
+  // 4. Restore inline math
+  mathInlines.forEach((math, idx) => {
+    const rendered = renderLatex(math, false);
+    html = html.replace(`@@MATH_INLINE_${idx}@@`, rendered);
+  });
+
+  return html;
+}
+
+function fallbackRenderMd(text) {
   const src = text.replace(/\r\n/g, "\n");
   const fenceMatches = [];
   let safe = esc(src).replace(/```([\s\S]*?)```/g, (_, code) => {

@@ -90,7 +90,9 @@
       const p = new URLSearchParams(window.location.search);
       const docId = (p.get('doc_id') || '').trim();
       const requestedPage = parseInt(p.get('page') || '1', 10) || 1;
-      const query = (p.get('query') || p.get('q') || p.get('snippet') || '').trim();
+      const query = (p.get('query') || p.get('q') || '').trim();
+      const snippet = (p.get('snippet') || '').trim();
+      const displayQuery = query || snippet;
 
       const pageChip = document.getElementById('pageChip');
       const queryText = document.getElementById('queryText');
@@ -105,7 +107,7 @@
       const nextMatchBtn = document.getElementById('nextMatchBtn');
 
       pageChip.textContent = `Page ${requestedPage}`;
-      queryText.textContent = query ? `Search: ${query}` : 'Search: -';
+      queryText.textContent = displayQuery ? `Search: ${displayQuery}` : 'Search: -';
 
       if (!docId) {
         queryText.textContent = 'Missing doc_id';
@@ -114,7 +116,7 @@
       }
 
       const fileUrl = `${window.location.origin}/api/pdf/${encodeURIComponent(docId)}`;
-      const nativeUrl = `${fileUrl}#page=${requestedPage}${query ? `&search=${encodeURIComponent(query)}` : ''}`;
+      const nativeUrl = `${fileUrl}#page=${requestedPage}${displayQuery ? `&search=${encodeURIComponent(displayQuery)}` : ''}`;
       openNativeBtn.addEventListener('click', () => window.open(nativeUrl, '_blank', 'noopener'));
 
       pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -146,6 +148,106 @@
         return qObj.terms.some(term => t.includes(term));
       }
 
+      function buildPageTextAndMap(items) {
+        let fullPageText = '';
+        const charMap = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const text = item.str;
+          for (let c = 0; c < text.length; c++) {
+            charMap.push(i);
+          }
+          fullPageText += text;
+          fullPageText += ' ';
+          charMap.push(-1);
+        }
+        return { fullPageText, charMap };
+      }
+
+      function cleanTextAndMap(text, originalCharMap) {
+        let cleanText = '';
+        const cleanCharMap = [];
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          const isAlphaNum = /[a-zA-Z0-9]/.test(char);
+          if (isAlphaNum) {
+            cleanText += char.toLowerCase();
+            cleanCharMap.push(originalCharMap[i]);
+          } else {
+            if (cleanText.length > 0 && cleanText[cleanText.length - 1] !== ' ') {
+              cleanText += ' ';
+              cleanCharMap.push(originalCharMap[i]);
+            }
+          }
+        }
+        return { cleanText, cleanCharMap };
+      }
+
+      function cleanSnippet(snip) {
+        let cleanSnip = '';
+        for (let i = 0; i < snip.length; i++) {
+          const char = snip[i];
+          const isAlphaNum = /[a-zA-Z0-9]/.test(char);
+          if (isAlphaNum) {
+            cleanSnip += char.toLowerCase();
+          } else {
+            if (cleanSnip.length > 0 && cleanSnip[cleanSnip.length - 1] !== ' ') {
+              cleanSnip += ' ';
+            }
+          }
+        }
+        return cleanSnip.trim();
+      }
+
+      function findAllSnippetMatches(cleanText, snip) {
+        const cleanSnip = cleanSnippet(snip);
+        if (!cleanSnip) return [];
+        
+        let matches = [];
+        let idx = cleanText.indexOf(cleanSnip);
+        while (idx !== -1) {
+          matches.push({ idx, length: cleanSnip.length });
+          idx = cleanText.indexOf(cleanSnip, idx + 1);
+        }
+        
+        if (matches.length > 0) return matches;
+        
+        // Progressively shorten prefix down to 25 characters
+        let len = cleanSnip.length;
+        while (len > 25) {
+          len = Math.max(25, Math.floor(len * 0.8));
+          const subSnip = cleanSnip.substring(0, len).trim();
+          if (subSnip.length >= 25) {
+            let subMatches = [];
+            let sIdx = cleanText.indexOf(subSnip);
+            while (sIdx !== -1) {
+              subMatches.push({ idx: sIdx, length: subSnip.length });
+              sIdx = cleanText.indexOf(subSnip, sIdx + 1);
+            }
+            if (subMatches.length > 0) {
+              return subMatches;
+            }
+          }
+          if (len <= 25) break;
+        }
+        return [];
+      }
+
+      async function pageHasSnippet(pageNum) {
+        if (!snippet) return false;
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const tc = await page.getTextContent();
+          const { fullPageText, charMap } = buildPageTextAndMap(tc.items);
+          const { cleanText } = cleanTextAndMap(fullPageText, charMap);
+          const matches = findAllSnippetMatches(cleanText, snippet);
+          return matches.length > 0;
+        } catch (e) {
+          console.error(e);
+          return false;
+        }
+      }
+
       async function pageHasQuery(pageNum, qObj) {
         if (!qObj.phrase && !qObj.terms.length) return false;
         const page = await pdfDoc.getPage(pageNum);
@@ -154,7 +256,15 @@
       }
 
       async function findBestPage(startPage, qObj) {
-        if (!qObj.phrase && !qObj.terms.length) return startPage;
+        if (!qObj.phrase && !qObj.terms.length && !snippet) return startPage;
+        if (snippet) {
+          for (let i = startPage; i <= totalPages; i++) {
+            if (await pageHasSnippet(i)) return i;
+          }
+          for (let i = 1; i < startPage; i++) {
+            if (await pageHasSnippet(i)) return i;
+          }
+        }
         for (let i = startPage; i <= totalPages; i++) {
           if (await pageHasQuery(i, qObj)) return i;
         }
@@ -205,7 +315,7 @@
       }
 
       async function jumpToNextMatch(direction, qObj) {
-        if (!query) return;
+        if (!displayQuery) return;
         const inPageCount = pageMatchElements.length;
         if (inPageCount > 0) {
           const nextIdx = activeMatchIndex + direction;
@@ -239,16 +349,52 @@
         pageMatchElements = [];
         activeMatchIndex = -1;
 
-        for (const item of tc.items) {
-          if (!textMatches(item.str, qObj)) continue;
-          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-          const x = tx[4];
-          const y = tx[5];
-          const width = Math.max(6, item.width * viewport.scale);
-          const height = Math.max(10, item.height * viewport.scale);
-          const marker = addHighlight(x, y - height, width, height);
-          pageMatchElements.push(marker);
-          hitCount += 1;
+        // Build character map of page text
+        const { fullPageText, charMap } = buildPageTextAndMap(tc.items);
+        const { cleanText, cleanCharMap } = cleanTextAndMap(fullPageText, charMap);
+
+        let snippetMatches = [];
+        if (snippet) {
+          snippetMatches = findAllSnippetMatches(cleanText, snippet);
+        }
+
+        if (snippetMatches.length > 0) {
+          // Highlight exact snippet matches
+          const matchedIndices = new Set();
+          for (const match of snippetMatches) {
+            for (let k = match.idx; k < match.idx + match.length; k++) {
+              const itemIdx = cleanCharMap[k];
+              if (itemIdx !== undefined && itemIdx !== -1) {
+                matchedIndices.add(itemIdx);
+              }
+            }
+          }
+
+          for (let i = 0; i < tc.items.length; i++) {
+            if (!matchedIndices.has(i)) continue;
+            const item = tc.items[i];
+            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const x = tx[4];
+            const y = tx[5];
+            const width = Math.max(6, item.width * viewport.scale);
+            const height = Math.max(10, item.height * viewport.scale);
+            const marker = addHighlight(x, y - height, width, height);
+            pageMatchElements.push(marker);
+            hitCount += 1;
+          }
+        } else {
+          // Fallback to keyword matching
+          for (const item of tc.items) {
+            if (!textMatches(item.str, qObj)) continue;
+            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const x = tx[4];
+            const y = tx[5];
+            const width = Math.max(6, item.width * viewport.scale);
+            const height = Math.max(10, item.height * viewport.scale);
+            const marker = addHighlight(x, y - height, width, height);
+            pageMatchElements.push(marker);
+            hitCount += 1;
+          }
         }
 
         statusBox.textContent = hitCount
@@ -270,7 +416,7 @@
       async function buildMatchIndex(qObj) {
         totalMatches = 0;
         pageMatchCounts.clear();
-        if (!qObj.phrase && !qObj.terms.length) {
+        if (!qObj.phrase && !qObj.terms.length && !snippet) {
           matchChip.textContent = 'Matches: 0';
           return;
         }
@@ -279,9 +425,23 @@
           const page = await pdfDoc.getPage(i);
           const tc = await page.getTextContent();
           let c = 0;
-          for (const item of tc.items) {
-            if (textMatches(item.str, qObj)) c += 1;
+
+          const { fullPageText, charMap } = buildPageTextAndMap(tc.items);
+          const { cleanText, cleanCharMap } = cleanTextAndMap(fullPageText, charMap);
+
+          let snippetMatches = [];
+          if (snippet) {
+            snippetMatches = findAllSnippetMatches(cleanText, snippet);
           }
+
+          if (snippetMatches.length > 0) {
+            c = snippetMatches.length;
+          } else {
+            for (const item of tc.items) {
+              if (textMatches(item.str, qObj)) c += 1;
+            }
+          }
+
           pageMatchCounts.set(i, c);
           totalMatches += c;
         }
@@ -294,7 +454,7 @@
           const loadingTask = pdfjsLib.getDocument({ url: fileUrl, withCredentials: false });
           pdfDoc = await loadingTask.promise;
           totalPages = pdfDoc.numPages || 1;
-          const qObj = queryTerms(query);
+          const qObj = queryTerms(displayQuery);
           await buildMatchIndex(qObj);
           const start = Math.min(Math.max(1, requestedPage), totalPages);
           const best = await findBestPage(start, qObj);

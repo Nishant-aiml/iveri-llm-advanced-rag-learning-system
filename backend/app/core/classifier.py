@@ -3,7 +3,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from app.rag.llm_client import call_llm
+from app.modules.llm_router.router import llm_router
 from app.state import chunk_store
 from app.config import CHUNKS_DIR
 
@@ -141,11 +141,11 @@ async def classify_document(doc_id: str) -> str:
 
     try:
         # Step 2: LLM fallback only when keyword confidence is low
-        result = await call_llm(
-            doc_id,
-            "classify",
-            CLASSIFY_PROMPT,
-            f"Document excerpts:\n\n{sample_text}\n\nClassify this document's subject."
+        result = await llm_router.generate(
+            doc_id=doc_id,
+            task_type="classify",
+            prompt=CLASSIFY_PROMPT,
+            context=f"Document excerpts:\n\n{sample_text}\n\nClassify this document's subject.",
         )
 
         answer = result.get("answer", "")

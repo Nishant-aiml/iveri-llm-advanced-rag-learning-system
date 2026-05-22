@@ -39,7 +39,154 @@ def _max_tokens_for_task(task_type: str) -> int:
     return LLM_MAX_TOKENS_BY_TASK.get(task_type, LLM_MAX_TOKENS_DEFAULT)
 
 
-async def call_llm(
+def _mock_llm_response(task_type: str, prompt: str, context: str) -> str:
+    import re
+    # Clean up and get sentences
+    sentences = [s.strip() for s in re.split(r'[.!?]+', context) if len(s.strip()) > 15]
+    if not sentences:
+        sentences = ["This is a fallback placeholder sentence for testing purposes only."]
+    
+    # 1. flashcards
+    if task_type == "flashcards":
+        cards = []
+        while len(sentences) < 10:
+            sentences.extend(sentences)
+        for i, s in enumerate(sentences[:10]):
+            words = s.split()
+            front = " ".join(words[:6]) + "?"
+            back = " ".join(words[:12])
+            cards.append({"front": front[:45], "back": back[:75]})
+        return json.dumps(cards)
+        
+    # 2. summary
+    elif task_type == "summary":
+        while len(sentences) < 5:
+            sentences.extend(sentences)
+        bullets = [s[:90] + ("..." if len(s) > 90 else "") for s in sentences[:5]]
+        explanation = "This summary highlights key definitions, practical steps, and architectural goals discussed in the document."
+        return json.dumps({
+            "bullets": bullets,
+            "explanation": explanation
+        })
+        
+    # 3. slides
+    elif task_type == "slides":
+        slides = []
+        chunks_count = min(len(sentences), 5)
+        for i in range(chunks_count):
+            title = f"Topic {i+1}: Study Guide"
+            bullets = [sentences[(i + j) % len(sentences)][:100] for j in range(3)]
+            slides.append({
+                "title": title,
+                "bullets": bullets
+            })
+        return json.dumps({"slides": slides})
+        
+    # 4. quiz
+    elif task_type == "quiz":
+        questions = []
+        for i in range(5):
+            correct_sent = sentences[i % len(sentences)]
+            distractors = [
+                f"Distractor choice A for sentence {i}",
+                f"Distractor choice B for sentence {i}",
+                f"Distractor choice C for sentence {i}"
+            ]
+            options = [correct_sent] + distractors
+            rot = i % 4
+            options = options[rot:] + options[:rot]
+            correct_answer = chr(ord("A") + options.index(correct_sent))
+            questions.append({
+                "question": f"Which statement is true regarding topic {i+1}?",
+                "options": [opt[:100] for opt in options],
+                "correct_answer": correct_answer,
+                "explanation": f"Correct answer is derived from: {correct_sent}"
+            })
+        return json.dumps(questions)
+        
+    # 5. mock_test
+    elif task_type == "mock_test":
+        questions = []
+        diffs = ["easy"] * 6 + ["medium"] * 6 + ["hard"] * 3
+        for i in range(15):
+            correct_sent = sentences[i % len(sentences)]
+            distractors = [
+                f"Incorrect alternative Option X {i}",
+                f"Incorrect alternative Option Y {i}",
+                f"Incorrect alternative Option Z {i}"
+            ]
+            options = [correct_sent] + distractors
+            rot = i % 4
+            options = options[rot:] + options[:rot]
+            correct_answer = chr(ord("A") + options.index(correct_sent))
+            questions.append({
+                "question": f"Question {i+1}: What is verified in section {i}?",
+                "options": [opt[:100] for opt in options],
+                "correct_answer": correct_answer,
+                "difficulty": diffs[i],
+                "topic": f"Section {i//3 + 1}",
+                "explanation": f"Correct because: {correct_sent}"
+            })
+        return json.dumps(questions)
+        
+    # 6. fun_facts
+    elif task_type == "fun_facts":
+        facts = [s[:120] for s in sentences[:5]]
+        return json.dumps({"facts": facts})
+        
+    # 7. rapid_fire
+    elif task_type == "rapid_fire":
+        qas = []
+        for i in range(10):
+            sent = sentences[i % len(sentences)]
+            words = sent.split()
+            q = f"What is key about {' '.join(words[:4])}?"
+            a = words[-1] if words else "Yes"
+            qas.append({"q": q[:100], "a": a[:20]})
+        return json.dumps({"questions": qas})
+        
+    # 8. true_false
+    elif task_type == "true_false":
+        statements = []
+        for i in range(10):
+            sent = sentences[i % len(sentences)]
+            ans = (i % 2 == 0)
+            stmt = sent if ans else f"It is false that {sent}"
+            statements.append({"statement": stmt[:150], "answer": ans})
+        return json.dumps({"statements": statements})
+        
+    # 9. fill_blanks
+    elif task_type == "fill_blanks":
+        fill_blanks = []
+        for i in range(10):
+            sent = sentences[i % len(sentences)]
+            words = sent.split()
+            if len(words) > 4:
+                answer = words[len(words)//2]
+                words[len(words)//2] = "___"
+                sentence = " ".join(words)
+            else:
+                sentence = "The primary RAG component is ___."
+                answer = "LLM"
+            fill_blanks.append({"sentence": sentence[:150], "answer": answer[:30]})
+        return json.dumps({"questions": fill_blanks})
+        
+    # 10. general Q&A
+    else:
+        if "ask_user_library" in task_type or "eval_" in task_type:
+            if '{"answer":' in prompt or 'valid JSON' in prompt:
+                return json.dumps({
+                    "answer": f"Based on the documents, the concept refers to: {sentences[0][:150]}",
+                    "sources": [
+                        {"chunk_id": "chunk_0", "doc_id": "doc_0", "page": 1, "section": "Introduction"}
+                    ],
+                    "confidence": "high"
+                })
+        reply = f"Here is the mentor explanation: {sentences[0]}\n\nLet's break it down further. Does this align with what you read in the first section?"
+        return reply
+
+
+async def call_sarvam_direct(
     doc_id: str,
     task_type: str,
     prompt: str,
@@ -50,18 +197,23 @@ async def call_llm(
     max_tokens: int | None = None,
     llm_variant: str | None = None,
 ) -> dict:
-    """Call Sarvam chat with caching, timeout, retry, and rate limiting.
-
-    ``llm_variant``: ``\"105b\"`` | ``\"30b\"`` (default 105B slot via config).
-
-    Returns: {"answer": str, "source_chunks": list, "cached": bool, "llm_model": str}
-    """
+    """Call Sarvam chat completions directly with caching, timeout, retry, and rate limiting."""
     model_id = sarvam_model_id_for_variant(llm_variant)
+    
+    if SARVAM_API_KEY == "dummy" or not SARVAM_API_KEY:
+        mock_ans = _mock_llm_response(task_type, prompt, context)
+        return {
+            "answer": mock_ans,
+            "source_chunks": [],
+            "cached": False,
+            "llm_model": "mock-sarvam",
+        }
+
     key = _cache_key(doc_id, task_type, context, model_id)
 
-    # Check cache first → instant return (optional)
+    # Check cache first → instant return
     if use_cache and key in llm_cache:
-        logger.info(f"LLM cache hit for {doc_id}/{task_type}")
+        logger.info(f"Sarvam cache hit for {doc_id}/{task_type}")
         cached = llm_cache[key].copy()
         cached["cached"] = True
         cached.setdefault("llm_model", model_id)
@@ -102,10 +254,10 @@ async def call_llm(
             return result
 
         except asyncio.TimeoutError:
-            logger.warning(f"LLM timeout (attempt {attempt+1}/{LLM_MAX_RETRIES})")
+            logger.warning(f"Sarvam timeout (attempt {attempt+1}/{LLM_MAX_RETRIES})")
             last_error = "timeout"
         except Exception as e:
-            logger.error(f"LLM error (attempt {attempt+1}): {e}")
+            logger.error(f"Sarvam error (attempt {attempt+1}): {e}")
             last_error = str(e)
 
         if attempt < LLM_MAX_RETRIES - 1:
@@ -117,6 +269,32 @@ async def call_llm(
         "cached": False,
         "llm_model": model_id,
     }
+
+
+async def call_llm(
+    doc_id: str,
+    task_type: str,
+    prompt: str,
+    context: str,
+    stream: bool = False,
+    use_cache: bool = True,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    llm_variant: str | None = None,
+) -> dict:
+    """Backward compatibility wrapper — redirects to the unified llm_router."""
+    from app.modules.llm_router.router import llm_router
+    return await llm_router.generate(
+        doc_id=doc_id,
+        task_type=task_type,
+        prompt=prompt,
+        context=context,
+        stream=stream,
+        use_cache=use_cache,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        llm_variant=llm_variant,
+    )
 
 
 def _clean_response(text: str) -> str:

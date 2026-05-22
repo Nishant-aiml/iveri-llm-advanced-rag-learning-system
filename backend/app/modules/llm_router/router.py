@@ -30,6 +30,9 @@ def _load_provider(provider_name: str) -> LLMProvider:
     elif name == "gemini":
         from app.modules.llm_router.providers.gemini import GeminiProvider
         return GeminiProvider()
+    elif name == "deepseek":
+        from app.modules.llm_router.providers.deepseek import DeepSeekProvider
+        return DeepSeekProvider()
     elif name == "anthropic":
         from app.modules.llm_router.providers.anthropic import AnthropicProvider
         return AnthropicProvider()
@@ -81,18 +84,55 @@ class LLMRouter:
         max_tokens: int | None = None,
         llm_variant: str | None = None,
     ) -> dict[str, Any]:
-        """Generate a response — dispatches to the active provider."""
-        return await self._provider.generate(
-            doc_id=doc_id,
-            task_type=task_type,
-            prompt=prompt,
-            context=context,
-            stream=stream,
-            use_cache=use_cache,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            llm_variant=llm_variant,
-        )
+        """Generate a response — dispatches to the active provider with a fallback chain."""
+        active_name = self._provider.provider_name
+
+        # Build sequence of providers to try
+        providers_to_try = [active_name]
+        for fallback in ["openai", "gemini", "sarvam"]:
+            if fallback not in providers_to_try:
+                providers_to_try.append(fallback)
+
+        last_error = None
+        for provider_name in providers_to_try:
+            try:
+                provider = _load_provider(provider_name)
+                logger.debug("[LLMROUTER] Attempting generation via '%s'...", provider_name)
+                res = await provider.generate(
+                    doc_id=doc_id,
+                    task_type=task_type,
+                    prompt=prompt,
+                    context=context,
+                    stream=stream,
+                    use_cache=use_cache,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    llm_variant=llm_variant,
+                )
+                ans = res.get("answer", "")
+                # Detect error strings returned as answers from provider calls
+                if (
+                    ans.startswith("Error:")
+                    or ans.startswith("OpenAI call failed")
+                    or ans.startswith("Gemini call failed")
+                    or ans.startswith("DeepSeek call failed")
+                ):
+                    logger.warning("[LLMROUTER] Provider '%s' returned error: %s", provider_name, ans[:100])
+                    last_error = ans
+                    continue
+
+                return res
+            except Exception as e:
+                logger.warning("[LLMROUTER] Provider '%s' raised exception: %s", provider_name, e)
+                last_error = str(e)
+                continue
+
+        return {
+            "answer": f"All LLM providers in fallback chain failed. Last error: {last_error}",
+            "source_chunks": [],
+            "cached": False,
+            "llm_model": active_name,
+        }
 
 
 # Singleton — import this in all feature modules

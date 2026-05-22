@@ -1,6 +1,6 @@
-"""Gemini LLM provider implementation.
+"""DeepSeek LLM provider implementation.
 
-Set LLM_PROVIDER=gemini and GEMINI_API_KEY in .env to activate.
+Set LLM_PROVIDER=deepseek and DEEPSEEK_API_KEY in .env to activate.
 """
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from app.modules.llm_router.base import LLMProvider
 logger = logging.getLogger(__name__)
 
 
-class GeminiProvider(LLMProvider):
-    """Google Gemini provider — production-ready implementation."""
+class DeepSeekProvider(LLMProvider):
+    """DeepSeek provider implementation."""
 
     @property
     def provider_name(self) -> str:
-        return "gemini"
+        return "deepseek"
 
     async def generate(
         self,
@@ -33,13 +33,10 @@ class GeminiProvider(LLMProvider):
         max_tokens: int | None = None,
         llm_variant: str | None = None,
     ) -> dict[str, Any]:
-        """Call Gemini REST API with caching and error handling."""
-        api_key = os.getenv("GEMINI_API_KEY", "")
-        model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        api_url = os.getenv(
-            "GEMINI_API_URL",
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        )
+        """Call DeepSeek chat completions API with caching and error handling."""
+        api_key = os.getenv("DEEPSEEK_API_KEY", "")
+        api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+        model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
         if not api_key or api_key == "dummy":
             from app.rag.llm_client import _mock_llm_response
@@ -48,7 +45,7 @@ class GeminiProvider(LLMProvider):
                 "answer": mock_ans,
                 "source_chunks": [],
                 "cached": False,
-                "llm_model": "mock-gemini",
+                "llm_model": "mock-deepseek",
             }
 
         # Check cache first
@@ -56,7 +53,7 @@ class GeminiProvider(LLMProvider):
         from app.rag.llm_client import _cache_key
         key = _cache_key(doc_id, task_type, context, model)
         if use_cache and key in llm_cache:
-            logger.info(f"Gemini cache hit for {doc_id}/{task_type}")
+            logger.info(f"DeepSeek cache hit for {doc_id}/{task_type}")
             cached = llm_cache[key].copy()
             cached["cached"] = True
             return cached
@@ -65,41 +62,35 @@ class GeminiProvider(LLMProvider):
         from app.rag.llm_client import _rate_limit
         await _rate_limit(doc_id)
 
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
         # Determine max tokens
         from app.rag.llm_client import _max_tokens_for_task
         mtok = _max_tokens_for_task(task_type) if max_tokens is None else max_tokens
 
-        url_with_key = f"{api_url}?key={api_key}"
-        headers = {"Content-Type": "application/json"}
-
         payload = {
-            "systemInstruction": {
-                "parts": [{"text": prompt}]
-            },
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": context}]
-                }
+            "model": model,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": context},
             ],
-            "generationConfig": {
-                "temperature": temperature if temperature is not None else 0.2,
-                "maxOutputTokens": mtok,
-            }
+            "temperature": temperature if temperature is not None else 0.2,
+            "max_tokens": mtok,
         }
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    url_with_key,
+                    api_url,
                     json=payload,
                     headers=headers,
                 )
                 response.raise_for_status()
                 data = response.json()
-
-                # Extract generated text from Gemini structure
-                answer = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                answer = data["choices"][0]["message"]["content"].strip()
 
                 result = {
                     "answer": answer,
@@ -114,9 +105,9 @@ class GeminiProvider(LLMProvider):
                 return result
 
         except Exception as e:
-            logger.error(f"Gemini call failed: {e}")
+            logger.error(f"DeepSeek call failed: {e}")
             return {
-                "answer": f"Gemini call failed: {e}",
+                "answer": f"DeepSeek call failed: {e}",
                 "source_chunks": [],
                 "cached": False,
                 "llm_model": model,

@@ -37,7 +37,7 @@ async def validation_exception_handler(
     """Handle Pydantic validation errors → user-friendly messages."""
     errors = []
     for e in exc.errors():
-        loc = " → ".join(str(x) for x in e.get("loc", []) if x != "body")
+        loc = " -> ".join(str(x) for x in e.get("loc", []) if x != "body")
         errors.append(f"{loc}: {e['msg']}" if loc else e["msg"])
 
     logger.warning("Validation error at %s: %s", request.url.path, errors)

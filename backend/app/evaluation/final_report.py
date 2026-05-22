@@ -115,6 +115,8 @@ async def generate_system_report(
         "mrr": mrr_data,
         "improvement_pct": improvement,
         "not_found_accuracy": eval_report.get("not_found_accuracy", 0),
+        "hallucination_rate": eval_report.get("hallucination_rate", 0.0),
+        "hallucination_logs": eval_report.get("hallucination_logs", []),
 
         "confidence_accuracy": calibration_report.get("confidence_accuracy", {
             "high": "N/A", "medium": "N/A", "low": "N/A",

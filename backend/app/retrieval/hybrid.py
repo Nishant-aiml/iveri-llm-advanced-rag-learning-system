@@ -133,7 +133,7 @@ async def hybrid_retrieve(
     t_total = (time.time() - t_start) * 1000
     logger.info(
         f"[RETRIEVAL RESULT] {len(vector_results)} vector + {len(bm25_results)} bm25 "
-        f"→ {len(results)} RRF-fused | total={t_total:.1f}ms"
+        f"-> {len(results)} RRF-fused | total={t_total:.1f}ms"
     )
 
     # DEBUG: RRF top 3

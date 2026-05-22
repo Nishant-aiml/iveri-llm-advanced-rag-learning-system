@@ -29,9 +29,8 @@ class SarvamProvider(LLMProvider):
         max_tokens: int | None = None,
         llm_variant: str | None = None,
     ) -> dict[str, Any]:
-        """Delegate to the existing Sarvam call_llm implementation."""
         # Import here to avoid circular imports at module load time.
-        from app.rag.llm_client import call_llm as _sarvam_call
+        from app.rag.llm_client import call_sarvam_direct as _sarvam_call
         return await _sarvam_call(
             doc_id=doc_id,
             task_type=task_type,

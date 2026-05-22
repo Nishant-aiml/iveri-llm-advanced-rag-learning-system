@@ -61,5 +61,5 @@ def filter_context(
         final.append(chunk)
         total_tokens += chunk_tokens
 
-    logger.info(f"Context filter: {len(chunks)} → {len(final)} chunks, {total_tokens}/{max_tokens} tokens")
+    logger.info(f"Context filter: {len(chunks)} -> {len(final)} chunks, {total_tokens}/{max_tokens} tokens")
     return final

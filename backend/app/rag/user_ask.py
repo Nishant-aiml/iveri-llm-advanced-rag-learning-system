@@ -18,7 +18,7 @@ from app.database import SessionLocal, Document
 from app.generators.prompts import get_prompt
 from app.llm.trust import build_source_citations, compute_confidence
 from app.query.expander import sanitize_query, expand_query
-from app.rag.llm_client import call_llm
+from app.modules.llm_router.router import llm_router
 from app.retrieval.context_filter import filter_context
 from app.retrieval.hybrid import hybrid_retrieve
 from app.retrieval.mmr import mmr_filter
@@ -460,11 +460,11 @@ async def generate_answer_with_llm(
 
     doc_key = f"userlib:{user_id}"
     t0 = time.time()
-    result = await call_llm(
-        doc_key,
-        "ask_user_library",
-        prompt,
-        user_block,
+    result = await llm_router.generate(
+        doc_id=doc_key,
+        task_type="ask_user_library",
+        prompt=prompt,
+        context=user_block,
         llm_variant=llm_variant,
         temperature=0.2,
     )

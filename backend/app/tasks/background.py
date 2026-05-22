@@ -96,11 +96,13 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
             else:
                 import pymupdf
                 temp_doc = pymupdf.open(file_path)
-                sample_text = ""
-                page_count = len(temp_doc)
-                for page in temp_doc:
-                    sample_text += page.get_text("text")
-                temp_doc.close()
+                try:
+                    sample_text = ""
+                    page_count = len(temp_doc)
+                    for page in temp_doc:
+                        sample_text += page.get_text("text")
+                finally:
+                    temp_doc.close()
                 parser_type = route_parser(sample_text, page_count)
 
             raw_content = await asyncio.to_thread(extract_document, file_path, parser_type)
@@ -229,13 +231,22 @@ async def process_document_pipeline(doc_id: str, file_path: str, retry_count: in
                 final_subject = "General Studies"
             add_to_library(doc_id, final_subject, doc_title)
             update_subject_title(doc_id, final_subject)
-            logger.info(f"[{doc_id}] Auto-classified → '{final_subject}'")
+            logger.info(f"[{doc_id}] Auto-classified -> '{final_subject}'")
         except Exception as e:
             logger.warning(f"[{doc_id}] Auto-classification failed (non-fatal): {e}")
 
         total_time = time.time() - start_time
-        logger.info(f"[{doc_id}] Pipeline complete ✓ ({total_time:.1f}s)")
+        logger.info(f"[{doc_id}] Pipeline complete [OK] ({total_time:.1f}s)")
 
+    except asyncio.CancelledError:
+        logger.warning(f"[{doc_id}] Pipeline cancelled/interrupted.")
+        _update_doc_status(
+            doc_id,
+            status="failed",
+            error="Ingestion process was cancelled or interrupted.",
+            last_error="CancelledError",
+        )
+        raise
     except Exception as e:
         logger.error(f"[{doc_id}] Pipeline failed: {e}", exc_info=True)
         if retry_count < max_retries:

@@ -81,20 +81,22 @@ def extract_with_pymupdf(file_path: str) -> dict:
     import pymupdf
 
     doc = pymupdf.open(file_path)
-    page_count = len(doc)
+    try:
+        page_count = len(doc)
 
-    # Per-page raw text (for header/footer detection)
-    pages_raw: list[str] = []
-    for page in doc:
-        pages_raw.append(page.get_text("text"))
-    doc.close()
+        # Per-page raw text (for header/footer detection)
+        pages_raw: list[str] = []
+        for page in doc:
+            pages_raw.append(page.get_text("text"))
 
-    # Remove headers/footers
-    pages_cleaned = _remove_headers_footers(pages_raw)
+        # Remove headers/footers
+        pages_cleaned = _remove_headers_footers(pages_raw)
 
-    # Also get the markdown version for structure
-    md_text = pymupdf4llm.to_markdown(file_path)
-    md_text = _clean_text(md_text)
+        # Also get the markdown version for structure
+        md_text = pymupdf4llm.to_markdown(doc)
+        md_text = _clean_text(md_text)
+    finally:
+        doc.close()
 
     return {
         "type": "markdown",
@@ -128,19 +130,21 @@ def extract_with_ocr(file_path: str) -> dict:
     import pymupdf
 
     doc = pymupdf.open(file_path)
-    pages_text: list[str] = []
-    for page in doc:
-        text = page.get_text("text")
-        if not text.strip():
-            try:
-                tp = page.get_textpage_ocr(language="eng", full=True)
-                text = page.get_text("text", textpage=tp)
-            except Exception:
-                text = ""
-        pages_text.append(text)
+    try:
+        pages_text: list[str] = []
+        for page in doc:
+            text = page.get_text("text")
+            if not text.strip():
+                try:
+                    tp = page.get_textpage_ocr(language="eng", full=True)
+                    text = page.get_text("text", textpage=tp)
+                except Exception:
+                    text = ""
+            pages_text.append(text)
 
-    page_count = len(doc)
-    doc.close()
+        page_count = len(doc)
+    finally:
+        doc.close()
 
     pages_cleaned = _remove_headers_footers(pages_text)
     pages_cleaned = [_clean_text(p) for p in pages_cleaned]

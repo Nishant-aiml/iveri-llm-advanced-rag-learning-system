@@ -1568,10 +1568,26 @@ async def delete_document(doc_id: str):
 
     bm25_indexes.pop(doc_id, None)
 
+    import gc
+    import time
     for ext in ALLOWED_EXTENSIONS:
         file_path = UPLOAD_DIR / f"{doc_id}{ext}"
         if file_path.exists():
-            file_path.unlink()
+            gc.collect()
+            deleted = False
+            for attempt in range(5):
+                try:
+                    file_path.unlink()
+                    deleted = True
+                    break
+                except PermissionError:
+                    gc.collect()
+                    time.sleep(0.2)
+            if not deleted:
+                logger.warning(
+                    "Could not delete locked file %s (being used by another process). Proceeding with database cleanup.",
+                    file_path
+                )
 
     remove_from_library(doc_id)
     delete_course_structure(doc_id)

@@ -9,7 +9,7 @@ import random
 import time
 from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE
 from app.retrieval.hybrid import retrieve_for_task, get_chunks_by_ordered_ids
-from app.rag.llm_client import call_llm
+from app.modules.llm_router.router import llm_router
 from app.generators.prompts import get_prompt, build_refresh_instruction
 from app.personalization.tracker import get_weak_topics_for_quiz
 from app.retrieval.mmr import mmr_filter
@@ -253,11 +253,11 @@ async def generate_quiz(
         prompt = base_prompt + strict_suffixes[min(attempt, len(strict_suffixes) - 1)]
         logger.info("[QUIZ PROMPT] doc=%s attempt=%s len=%s", doc_id, attempt + 1, len(prompt))
         try:
-            result = await call_llm(
-                doc_id,
-                quiz_type,
-                prompt,
-                context,
+            result = await llm_router.generate(
+                doc_id=doc_id,
+                task_type=quiz_type,
+                prompt=prompt,
+                context=context,
                 use_cache=False,
                 llm_variant=llm_variant,
                 temperature=llm_temp,

@@ -235,7 +235,7 @@ function checkPwStrength(pw) {
     { w:'70%', c:'#3B82F6', t:'Good' },
     { w:'100%',c:'#16A34A', t:'Strong' },
   ];
-  const s = map[Math.min(score-1, 3)];
+  const s = map[score > 0 ? Math.min(score-1, 3) : 0];
   fill.style.width      = s.w;
   fill.style.background = s.c;
   label.style.color     = s.c;
@@ -493,7 +493,7 @@ function go(viewId) {
 
 function needsLoad(containerId) {
   const c = el(containerId);
-  return c && c.querySelector('.skeleton-block');
+  return c && (c.querySelector('.skeleton-block') || c.querySelector('.empty-state'));
 }
 
 function toggleSidebar() {
@@ -935,9 +935,73 @@ function errorState(msg) {
   </div>`;
 }
 
-// Very light markdown renderer
+// Robust markdown renderer with math support (marked + KaTeX)
 function renderMd(text) {
-  if (typeof text !== 'string') return String(text||'');
+  if (typeof text !== 'string') return String(text || '');
+
+  // Normalize line endings
+  let src = text.replace(/\r\n/g, '\n');
+
+  // Placeholders for math blocks
+  const mathBlocks = [];
+  const mathInlines = [];
+
+  // 1. Extract block math: $$ math $$
+  src = src.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    const key = `@@MATH_BLOCK_${mathBlocks.length}@@`;
+    mathBlocks.push(math.trim());
+    return key;
+  });
+
+  // 2. Extract inline math: $ math $
+  src = src.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
+    const key = `@@MATH_INLINE_${mathInlines.length}@@`;
+    mathInlines.push(math.trim());
+    return key;
+  });
+
+  // Parse markdown
+  let html = '';
+  if (typeof marked !== 'undefined' && marked.parse) {
+    try {
+      html = marked.parse(src);
+    } catch (e) {
+      console.error("Marked parsing failed, fallback used", e);
+      html = fallbackRenderMd(src);
+    }
+  } else {
+    html = fallbackRenderMd(src);
+  }
+
+  // Helper function to render LaTeX or return fallback text
+  function renderLatex(math, displayMode) {
+    if (typeof katex !== 'undefined' && katex.renderToString) {
+      try {
+        return katex.renderToString(math, { displayMode, throwOnError: false });
+      } catch (err) {
+        console.error(err);
+        return displayMode ? `<pre>$$${math}$$</pre>` : `<code>$${math}$</code>`;
+      }
+    }
+    return displayMode ? `<pre class="math-block">$$${math}$$</pre>` : `<code class="math-inline">$${math}$</code>`;
+  }
+
+  // 3. Restore block math
+  mathBlocks.forEach((math, idx) => {
+    const rendered = renderLatex(math, true);
+    html = html.replace(`@@MATH_BLOCK_${idx}@@`, rendered);
+  });
+
+  // 4. Restore inline math
+  mathInlines.forEach((math, idx) => {
+    const rendered = renderLatex(math, false);
+    html = html.replace(`@@MATH_INLINE_${idx}@@`, rendered);
+  });
+
+  return html;
+}
+
+function fallbackRenderMd(text) {
   let h = esc(text)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g,     '<em>$1</em>')
@@ -952,6 +1016,7 @@ function renderMd(text) {
   if (!h.startsWith('<h') && !h.startsWith('<ul')) h = `<p>${h}</p>`;
   return h;
 }
+
 
 // ── API HELPERS ───────────────────────────────────────────────
 const _LLM_API_ENDPOINTS = new Set(['ask', 'mentor', 'generate', 'quiz/start', 'search']);
@@ -1118,11 +1183,13 @@ function onSearchResultCardClick(e, cardEl) {
   const docId = decodeURIComponent((cardEl?.dataset?.docId || '').toString());
   const page = Number(cardEl?.dataset?.page || '1') || 1;
   const query = decodeURIComponent((cardEl?.dataset?.query || '').toString());
+  const snippet = decodeURIComponent((cardEl?.dataset?.snippet || '').toString());
   if (!docId) return;
   const q = new URLSearchParams();
   q.set('doc_id', docId);
   q.set('page', String(page));
   if (query) q.set('query', query);
+  if (snippet) q.set('snippet', snippet);
   window.open(`/pdf-viewer.html?${q.toString()}`, '_blank', 'noopener');
 }
 
@@ -1144,11 +1211,13 @@ function onOpenPdfFromSearch(e, btnEl) {
   const docId = decodeURIComponent((btnEl?.dataset?.docId || '').toString());
   const page = Number(btnEl?.dataset?.page || '1') || 1;
   const query = decodeURIComponent((btnEl?.dataset?.query || '').toString());
+  const snippet = decodeURIComponent((btnEl?.dataset?.snippet || '').toString());
   if (!docId) return;
   const q = new URLSearchParams();
   q.set('doc_id', docId);
   q.set('page', String(page));
   if (query) q.set('query', query);
+  if (snippet) q.set('snippet', snippet);
   window.open(`/pdf-viewer.html?${q.toString()}`, '_blank', 'noopener');
 }
 
@@ -1213,7 +1282,7 @@ function renderSearchResults(d, query) {
       const dQuery = encodeURIComponent(query || '');
       const dSnippet = encodeURIComponent(r.snippet || r.text || '');
       html += `<div class="sr-google-card" role="button" tabindex="0"
-        data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}"
+        data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}" data-snippet="${dSnippet}"
         onclick="onSearchResultCardClick(event,this)">
         <div class="sr-g-title">${esc(title)}</div>
         <div class="sr-g-url">📄 ${esc(docName)} · Page ${page} · Score: ${score}${path ? ' · ' + esc(path) : ''}</div>
@@ -1230,7 +1299,7 @@ function renderSearchResults(d, query) {
             Open in Course
           </button>
           <button class="btn btn-ghost btn-sm" type="button"
-            data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}"
+            data-doc-id="${dDocId}" data-page="${page}" data-query="${dQuery}" data-snippet="${dSnippet}"
             onclick="onOpenPdfFromSearch(event,this)">Open in PDF</button>
         </div>
       </div>`;
