@@ -39,6 +39,7 @@ backend/storage/library/catalog.json
 backend/storage/usage/
 backend/storage/billing/
 backend/storage/provider_metrics/
+backend/storage/*.pdf
 
 # OS / temp
 **/.pytest_cache/

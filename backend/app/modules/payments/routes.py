@@ -112,17 +112,29 @@ async def subscribe_user(req: SubscribeRequest):
     try:
         user = db.query(User).filter(User.id == req.user_id).first()
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            user = User(
+                id=req.user_id,
+                name=req.user_id,
+                username=req.user_id,
+                tier=tier,
+                xp=0,
+                level=1,
+                streak=0
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info("Created new user %s and set tier to %s", req.user_id, tier)
+        else:
+            user.tier = tier
+            # Reset limits on tier change so they can immediately use their new quota
+            user.daily_rag_count = 0
+            user.daily_quiz_count = 0
+            user.daily_summary_count = 0
+            user.daily_flashcard_count = 0
+            db.commit()
+            logger.info("Successfully updated user %s to tier %s", req.user_id, tier)
             
-        user.tier = tier
-        # Reset limits on tier change so they can immediately use their new quota
-        user.daily_rag_count = 0
-        user.daily_quiz_count = 0
-        user.daily_summary_count = 0
-        user.daily_flashcard_count = 0
-        
-        db.commit()
-        logger.info("Successfully updated user %s to tier %s", req.user_id, tier)
         return {
             "user_id": user.id,
             "tier": user.tier,

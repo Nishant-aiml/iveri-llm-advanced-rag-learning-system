@@ -35,6 +35,12 @@ def main():
     global DOC_ID
     c = httpx.Client(timeout=60)
 
+    # Ensure test user is registered and upgraded to premium to unlock multi-doc Q&A and Mentor chats
+    try:
+        c.post(f"{BASE}/payments/subscribe", json={"user_id": USER, "tier": "premium"})
+    except Exception as ex:
+        print(f"⚠️ Warning: failed to pre-subscribe test user: {ex}")
+
     print("\n" + "="*60)
     print("🧪 AI Document Learning Engine — Full E2E Test Suite")
     print("="*60)
