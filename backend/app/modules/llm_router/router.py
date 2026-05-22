@@ -58,19 +58,46 @@ class LLMRouter:
 
     def __init__(self):
         provider_name = os.getenv("LLM_PROVIDER", "sarvam")
-        self._provider: LLMProvider = _load_provider(provider_name)
+        self._provider_name = provider_name.strip().lower()
+        if self._provider_name != "balanced":
+            self._provider: LLMProvider = _load_provider(self._provider_name)
+        else:
+            self._provider = None
         logger.info(
-            "LLMRouter initialized with provider: %s", self._provider.provider_name
+            "LLMRouter initialized with provider env: %s", self._provider_name
         )
 
     @property
     def provider(self) -> LLMProvider:
+        if self._provider is None:
+            # Under balanced mode, return Gemini as the primary default
+            return _load_provider("gemini")
         return self._provider
 
     def switch_provider(self, provider_name: str) -> None:
         """Hot-switch the provider at runtime (e.g., for A/B testing)."""
-        self._provider = _load_provider(provider_name)
-        logger.info("LLMRouter switched to provider: %s", self._provider.provider_name)
+        name = provider_name.strip().lower()
+        self._provider_name = name
+        if name != "balanced":
+            self._provider = _load_provider(name)
+        else:
+            self._provider = None
+        logger.info("LLMRouter switched to provider: %s", self._provider_name)
+
+    def route_task(self, task_type: str) -> str:
+        """Map task_type to the appropriate LLM provider name according to the Balanced Stack plan."""
+        t = (task_type or "ask").strip().lower()
+        if t.startswith("rerank"):
+            return "sarvam"
+        
+        if t in ("ask", "ask_user_library", "summary", "mentor"):
+            return "gemini"  # Grounding & long-context strength
+        elif t in ("quiz", "mock_test", "rapid_fire", "true_false", "fill_blanks"):
+            return "openai"  # Strict JSON Schema / Structured Outputs
+        elif t in ("flashcards", "weakness_advisor", "classify", "slides", "fun_facts"):
+            return "deepseek"  # Commodity cost, high logic
+        else:
+            return "gemini"  # Default fallback
 
     async def generate(
         self,
@@ -85,11 +112,14 @@ class LLMRouter:
         llm_variant: str | None = None,
     ) -> dict[str, Any]:
         """Generate a response — dispatches to the active provider with a fallback chain."""
-        active_name = self._provider.provider_name
+        if self._provider_name == "balanced":
+            primary_name = self.route_task(task_type)
+        else:
+            primary_name = self._provider_name
 
         # Build sequence of providers to try
-        providers_to_try = [active_name]
-        for fallback in ["openai", "gemini", "sarvam"]:
+        providers_to_try = [primary_name]
+        for fallback in ["openai", "gemini", "sarvam", "deepseek"]:
             if fallback not in providers_to_try:
                 providers_to_try.append(fallback)
 
