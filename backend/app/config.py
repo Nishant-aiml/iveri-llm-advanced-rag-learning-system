@@ -88,6 +88,12 @@ EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 # --- RAG / Chunking ---
 MAX_CONTEXT_TOKENS = 1500
+FEATURE_TOKEN_BUDGETS = {
+    "ask": {"context": 800, "output": 150},
+    "quiz": {"context": 2500, "output": 800},
+    "flashcard": {"context": 1500, "output": 400},
+    "summary": {"context": 2000, "output": 300},
+}
 CHUNK_SIZE_WORDS = 350
 CHUNK_OVERLAP_WORDS = 50
 CHUNK_MIN_WORDS = 100      # Merge chunks below this

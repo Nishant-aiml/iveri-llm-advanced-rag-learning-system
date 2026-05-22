@@ -36,6 +36,12 @@ class GeminiProvider(LLMProvider):
         """Call Gemini REST API with caching and error handling."""
         api_key = os.getenv("GEMINI_API_KEY", "")
         model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        
+        if llm_variant == "gemini-flash-lite":
+            model = os.getenv("GEMINI_MODEL_FLASH_LITE", "gemini-2.5-flash-lite")
+        elif llm_variant == "gemini-3.1-flash-lite":
+            model = os.getenv("GEMINI_MODEL_3_1_FLASH_LITE", "gemini-3.1-flash-lite")
+
         api_url = os.getenv(
             "GEMINI_API_URL",
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

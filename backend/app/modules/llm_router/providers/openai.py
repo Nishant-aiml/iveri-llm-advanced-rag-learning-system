@@ -38,6 +38,9 @@ class OpenAIProvider(LLMProvider):
         api_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/chat/completions")
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
+        if llm_variant == "gpt-5-nano":
+            model = os.getenv("OPENAI_MODEL_5_NANO", "gpt-5-nano")
+
         if not api_key or api_key == "dummy":
             from app.rag.llm_client import _mock_llm_response
             mock_ans = _mock_llm_response(task_type, prompt, context)

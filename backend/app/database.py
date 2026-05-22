@@ -36,6 +36,14 @@ class User(Base):
     daily_xp = Column(Integer, default=0)
     last_active = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # Monetization and Tiered Infrastructure Columns
+    tier = Column(String, default="free")  # free | premium
+    daily_rag_count = Column(Integer, default=0)
+    daily_quiz_count = Column(Integer, default=0)
+    daily_summary_count = Column(Integer, default=0)
+    daily_flashcard_count = Column(Integer, default=0)
+    last_request_reset = Column(String, nullable=True)
+
     __table_args__ = (
         Index("ix_users_daily_xp", "daily_xp"),
     )
@@ -193,6 +201,7 @@ def init_db():
     try:
         from sqlalchemy import text
         with engine.begin() as conn:
+            # 1. Documents table migration
             cols = conn.execute(text("PRAGMA table_info(documents)")).fetchall()
             col_names = {c[1] for c in cols}  # second field is column name
 
@@ -200,6 +209,25 @@ def init_db():
                 conn.execute(text("ALTER TABLE documents ADD COLUMN retry_count INTEGER DEFAULT 0"))
             if "last_error" not in col_names:
                 conn.execute(text("ALTER TABLE documents ADD COLUMN last_error TEXT"))
+
+            # 2. Users table migration for tiered infrastructure
+            users_cols = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+            users_col_names = {c[1] for c in users_cols}
+
+            if "tier" not in col_names:
+                # Note: col_names is for documents, check users_col_names!
+                if "tier" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN tier VARCHAR DEFAULT 'free'"))
+                if "daily_rag_count" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN daily_rag_count INTEGER DEFAULT 0"))
+                if "daily_quiz_count" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN daily_quiz_count INTEGER DEFAULT 0"))
+                if "daily_summary_count" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN daily_summary_count INTEGER DEFAULT 0"))
+                if "daily_flashcard_count" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN daily_flashcard_count INTEGER DEFAULT 0"))
+                if "last_request_reset" not in users_col_names:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN last_request_reset VARCHAR"))
     except Exception:
         # Non-fatal: columns will be present in fresh DBs; otherwise, endpoints using them may fail.
-        logger.exception("DB migration for retry_count/last_error failed")
+        logger.exception("DB migration for retry_count/last_error or users monetization columns failed")

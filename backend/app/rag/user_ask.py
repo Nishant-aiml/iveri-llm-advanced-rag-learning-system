@@ -13,7 +13,7 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 from typing import Any
 
-from app.config import PROMPT_VERSION
+from app.config import PROMPT_VERSION, FEATURE_TOKEN_BUDGETS
 from app.database import SessionLocal, Document
 from app.generators.prompts import get_prompt
 from app.llm.trust import build_source_citations, compute_confidence
@@ -43,7 +43,7 @@ def _put_user_ask_cache(key: str, payload: dict) -> None:
 # RRF scores are typically small (e.g. 0.01–0.15); below this, treat as no match.
 MIN_TOP_RRF = 0.008
 EXTRACTIVE_RRF = 0.06
-MAX_CONTEXT_TOKENS = 800
+MAX_CONTEXT_TOKENS = FEATURE_TOKEN_BUDGETS["ask"]["context"]
 MERGE_POOL = 20
 MMR_MAX = 3
 TOP_RELEVANCE_GATE = 0.55
@@ -467,6 +467,7 @@ async def generate_answer_with_llm(
         context=user_block,
         llm_variant=llm_variant,
         temperature=0.2,
+        max_tokens=FEATURE_TOKEN_BUDGETS["ask"]["output"],
     )
     llm_ms = (time.time() - t0) * 1000
     raw = (result.get("answer") or "").strip()

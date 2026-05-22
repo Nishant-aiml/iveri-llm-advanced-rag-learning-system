@@ -36,6 +36,9 @@ backend/storage/chunks/
 backend/storage/faiss_index/
 backend/storage/course_structures/
 backend/storage/library/catalog.json
+backend/storage/usage/
+backend/storage/billing/
+backend/storage/provider_metrics/
 
 # OS / temp
 **/.pytest_cache/

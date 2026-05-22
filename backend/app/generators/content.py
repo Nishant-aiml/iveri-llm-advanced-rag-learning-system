@@ -4,7 +4,7 @@ Upgraded: uses hybrid retrieval pipeline.
 import json
 import re
 import logging
-from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE
+from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE, FEATURE_TOKEN_BUDGETS
 from app.retrieval.hybrid import retrieve_for_task, get_chunks_by_ordered_ids
 from app.modules.llm_router.router import llm_router
 from app.generators.prompts import get_prompt, build_refresh_instruction
@@ -83,8 +83,12 @@ async def generate_content(
             logger.exception("MMR filter failed in generate_content; continuing without it.")
 
         try:
-            max_tokens = 1500 if content_type == "summary" else 1200
-            chunks = filter_context(chunks, max_tokens=max_tokens, prefer_child=True)
+            max_context_tokens = 1200
+            if content_type == "summary":
+                max_context_tokens = FEATURE_TOKEN_BUDGETS["summary"]["context"]
+            elif content_type in ("flashcards", "flashcard"):
+                max_context_tokens = FEATURE_TOKEN_BUDGETS["flashcard"]["context"]
+            chunks = filter_context(chunks, max_tokens=max_context_tokens, prefer_child=True)
         except Exception:
             logger.exception("filter_context failed in generate_content; continuing without it.")
 
@@ -159,6 +163,12 @@ async def generate_content(
     for attempt in range(max_attempts):
         prompt = base_prompt + strict_suffixes[min(attempt, len(strict_suffixes) - 1)]
         logger.info("[CONTENT PROMPT] doc=%s type=%s attempt=%s len=%s", doc_id, content_type, attempt + 1, len(prompt))
+        llm_max_tokens = None
+        if content_type == "summary":
+            llm_max_tokens = FEATURE_TOKEN_BUDGETS["summary"]["output"]
+        elif content_type in ("flashcards", "flashcard"):
+            llm_max_tokens = FEATURE_TOKEN_BUDGETS["flashcard"]["output"]
+
         result = await llm_router.generate(
             doc_id=doc_id,
             task_type=content_type,
@@ -167,6 +177,7 @@ async def generate_content(
             use_cache=False,
             llm_variant=llm_variant,
             temperature=llm_temp,
+            max_tokens=llm_max_tokens,
         )
         last_answer = result.get("answer", "") or ""
         logger.info(

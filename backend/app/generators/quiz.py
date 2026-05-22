@@ -7,7 +7,7 @@ import re
 import logging
 import random
 import time
-from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE
+from app.config import AI_RETRIEVAL_MAX_CHUNKS, LLM_REFRESH_TEMPERATURE, FEATURE_TOKEN_BUDGETS
 from app.retrieval.hybrid import retrieve_for_task, get_chunks_by_ordered_ids
 from app.modules.llm_router.router import llm_router
 from app.generators.prompts import get_prompt, build_refresh_instruction
@@ -261,6 +261,7 @@ async def generate_quiz(
                 use_cache=False,
                 llm_variant=llm_variant,
                 temperature=llm_temp,
+                max_tokens=FEATURE_TOKEN_BUDGETS["quiz"]["output"] if quiz_type in ("quiz", "mock_test") else None,
             )
         except Exception as e:
             logger.error(f"LLM call failed during quiz generation: {e}")

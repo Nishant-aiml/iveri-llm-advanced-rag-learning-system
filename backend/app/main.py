@@ -37,6 +37,7 @@ from app.modules.content_library.routes import router as library_router
 from app.modules.courses.routes import router as courses_router
 from app.modules.gamification.routes import router as gamification_router
 from app.modules.analytics.routes import router as analytics_router
+from app.modules.payments.routes import router as payments_router
 
 setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ app.include_router(library_router,      prefix="/api")
 app.include_router(courses_router,      prefix="/api")
 app.include_router(gamification_router, prefix="/api")
 app.include_router(analytics_router,    prefix="/api")
+app.include_router(payments_router,     prefix="/api")
 
 # ── Legacy Router (backward compatibility) ─────────────────────────────────
 # The original monolithic router is still included so that any integration

@@ -32,22 +32,39 @@ def test_llm_router_unknown_provider_falls_back():
 
 
 def test_llm_router_balanced_routing():
-    """LLMRouter routes task_types appropriately in 'balanced' mode."""
+    """LLMRouter routes task_types appropriately in 'balanced' mode based on user tier."""
     from app.modules.llm_router.router import LLMRouter
     router = LLMRouter()
     router.switch_provider("balanced")
     
-    # "ask", "ask_user_library", "summary", "mentor" -> gemini
-    assert router.route_task("ask") == "gemini"
-    assert router.route_task("summary") == "gemini"
+    # --- FREE TIER ---
+    # RAG & Summaries -> gemini
+    assert router.route_task("ask", "free") == "gemini"
+    assert router.route_task("summary", "free") == "gemini"
     
-    # "quiz", "mock_test", "rapid_fire", "true_false", "fill_blanks" -> openai
-    assert router.route_task("quiz") == "openai"
-    assert router.route_task("mock_test") == "openai"
+    # Quizzes & Flashcards -> openai
+    assert router.route_task("quiz", "free") == "openai"
+    assert router.route_task("mock_test", "free") == "openai"
+    assert router.route_task("flashcards", "free") == "openai"
     
-    # "flashcards", "weakness_advisor", "classify", "slides", "fun_facts" -> deepseek
-    assert router.route_task("flashcards") == "deepseek"
-    assert router.route_task("classify") == "deepseek"
+    # Reranker -> local_bge
+    assert router.route_task("rerank", "free") == "local_bge"
     
     # Other fallback -> gemini
-    assert router.route_task("random_unknown_task") == "gemini"
+    assert router.route_task("random_unknown_task", "free") == "gemini"
+
+    # --- PREMIUM TIER ---
+    # RAG & Summaries -> openai
+    assert router.route_task("ask", "premium") == "openai"
+    assert router.route_task("summary", "premium") == "openai"
+    
+    # Quizzes & Flashcards -> gemini
+    assert router.route_task("quiz", "premium") == "gemini"
+    assert router.route_task("mock_test", "premium") == "gemini"
+    assert router.route_task("flashcards", "premium") == "gemini"
+    
+    # Reranker -> local_bge
+    assert router.route_task("rerank", "premium") == "local_bge"
+    
+    # Other fallback -> gemini
+    assert router.route_task("random_unknown_task", "premium") == "gemini"

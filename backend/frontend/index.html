@@ -191,7 +191,17 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         Leaderboard
       </button>
+      <button class="nav-btn" data-view="payments" onclick="go('payments')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Pricing & Limits
+      </button>
     </nav>
+
+    <div class="sidebar-upgrade-card" id="sidebarUpgradeCard" style="display:none">
+      <p class="sidebar-upgrade-title">🚀 Unlock Premium</p>
+      <p class="sidebar-upgrade-text">Get unlimited Ask AI, Multi-PDF analysis, and Study Coach.</p>
+      <button class="btn btn-premium btn-xs btn-full" onclick="go('payments')">Upgrade Now</button>
+    </div>
 
     <div class="llm-model-toggle" title="Model used for Ask AI, quizzes, flashcards, summary, and course AI">
       <span class="llm-model-label">Sarvam</span>
@@ -421,6 +431,90 @@
       <section id="viewLeaderboard" class="view">
         <div class="view-header"><h2>Leaderboard</h2><p class="view-subtitle">Top learners today</p></div>
         <div id="leaderboardContent"><div class="skeleton-block"></div><div class="skeleton-block"></div><div class="skeleton-block"></div></div>
+      </section>
+
+      <!-- Payments & Subscriptions -->
+      <section id="viewPayments" class="view">
+        <div class="view-header">
+          <h2>Pricing & Subscriptions</h2>
+          <p class="view-subtitle">Manage your plan, check daily API usage, and unlock premium learning capabilities.</p>
+        </div>
+        <div class="payments-container">
+          <!-- Alert Banner for hitting limits -->
+          <div class="payments-alert-banner" id="paymentsAlertBanner" style="display:none"></div>
+
+          <!-- Usage status dashboard -->
+          <div class="usage-dashboard card glass">
+            <h3>Daily Usage Quota</h3>
+            <p class="usage-description">Usage resets daily at 00:00 UTC. Premium users enjoy unlimited capabilities.</p>
+            <div class="usage-stats-grid" id="usageStatsGrid">
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+
+          <!-- Pricing plans -->
+          <div class="pricing-grid">
+            <!-- Free Tier Card -->
+            <div class="pricing-card card glass" id="planCardFree">
+              <div class="plan-header">
+                <span class="plan-badge">Current Plan</span>
+                <h4>Freemium</h4>
+                <div class="price">$0<span>/month</span></div>
+              </div>
+              <ul class="plan-features">
+                <li><span class="feat-check">✓</span> 5 Ask AI (RAG) queries/day</li>
+                <li><span class="feat-check">✓</span> 2 Quizzes &amp; Flashcards/day</li>
+                <li><span class="feat-check">✓</span> Single document indexing</li>
+                <li><span class="feat-check">✓</span> Gemini 2.5 Flash-Lite models</li>
+                <li><span class="feat-x">✗</span> Advanced AI Study Coach</li>
+                <li><span class="feat-x">✗</span> Multi-PDF cross-document reasoning</li>
+                <li><span class="feat-x">✗</span> Timed Mock Exams</li>
+                <li><span class="feat-x">✗</span> Priority response speeds</li>
+              </ul>
+              <button class="btn btn-secondary btn-full plan-btn" id="btnPlanFree" disabled>Active Plan</button>
+            </div>
+
+            <!-- Standard Tier Card -->
+            <div class="pricing-card card glass" id="planCardStandard">
+              <div class="plan-header">
+                <span class="plan-badge badge-blue">Popular</span>
+                <h4>Standard</h4>
+                <div class="price">$9<span>/month</span></div>
+              </div>
+              <ul class="plan-features">
+                <li><span class="feat-check">✓</span> 50 Ask AI (RAG) queries/day</li>
+                <li><span class="feat-check">✓</span> 20 Quizzes &amp; Flashcards/day</li>
+                <li><span class="feat-check">✓</span> Single document indexing</li>
+                <li><span class="feat-check">✓</span> Gemini 3.1 Flash-Lite &amp; GPT-5 Nano</li>
+                <li><span class="feat-check">✓</span> Advanced AI Study Coach</li>
+                <li><span class="feat-x">✗</span> Multi-PDF cross-document reasoning</li>
+                <li><span class="feat-x">✗</span> Timed Mock Exams</li>
+                <li><span class="feat-check">✓</span> Priority response speeds</li>
+              </ul>
+              <button class="btn btn-primary btn-full plan-btn" id="btnPlanStandard" onclick="subscribeToPlan('standard')">Upgrade to Standard</button>
+            </div>
+
+            <!-- Premium Tier Card -->
+            <div class="pricing-card card glass premium-card" id="planCardPremium">
+              <div class="plan-header">
+                <span class="plan-badge badge-premium">Ultimate</span>
+                <h4>Premium</h4>
+                <div class="price">$19<span>/month</span></div>
+              </div>
+              <ul class="plan-features">
+                <li><span class="feat-check">✓</span> Unlimited Ask AI queries</li>
+                <li><span class="feat-check">✓</span> Unlimited Quizzes &amp; Flashcards</li>
+                <li><span class="feat-check">✓</span> Multi-PDF cross-document reasoning</li>
+                <li><span class="feat-check">✓</span> Timed Mock Exams unlocked</li>
+                <li><span class="feat-check">✓</span> GPT-5 Nano &amp; Gemini 3.1 Flash-Lite</li>
+                <li><span class="feat-check">✓</span> Advanced AI Study Coach</li>
+                <li><span class="feat-check">✓</span> Smart Weakness Predictive Analytics</li>
+                <li><span class="feat-check">✓</span> Priority Uploads &amp; Reranking</li>
+              </ul>
+              <button class="btn btn-premium btn-full plan-btn" id="btnPlanPremium" onclick="subscribeToPlan('premium')">Upgrade to Premium</button>
+            </div>
+          </div>
+        </div>
       </section>
 
     </main>

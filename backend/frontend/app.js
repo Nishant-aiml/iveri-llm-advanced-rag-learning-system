@@ -255,11 +255,18 @@ function updateUserUI() {
   const n = STATE.username || STATE.email || 'User';
   const initial = n.charAt(0).toUpperCase();
   setText('sidebarName', n);
-  setText('sidebarMeta', `${STATE.xp} XP · Lv ${STATE.level}`);
+  const tierStr = STATE.tier ? ` · ${STATE.tier.charAt(0).toUpperCase() + STATE.tier.slice(1)}` : '';
+  setText('sidebarMeta', `${STATE.xp} XP · Lv ${STATE.level}${tierStr}`);
   setText('sidebarAvatar', initial);
   setText('topbarAvatar', initial);
   setText('xpTopbar', `${STATE.xp} XP`);
   setText('lvTopbar', STATE.level);
+
+  // Sync sidebar upgrade card visibility
+  const upCard = el('sidebarUpgradeCard');
+  if (upCard) {
+    upCard.style.display = STATE.tier === 'free' || !STATE.tier ? 'flex' : 'none';
+  }
 }
 
 function updateStats(xp, level, streak) {
@@ -272,6 +279,11 @@ async function fetchScore() {
   try {
     const d = await get(`score?user_id=${STATE.userId}`);
     updateStats(d.xp, d.level, d.streak);
+  } catch{}
+  try {
+    const prof = await get(`users/profile?user_id=${STATE.userId}`);
+    STATE.tier = prof.tier;
+    updateUserUI();
   } catch{}
 }
 
@@ -483,6 +495,7 @@ function go(viewId) {
   if (viewId === 'weakness')    initWeakness();
   if (viewId === 'library')     initLibrary();
   if (viewId === 'evaluation')  resetEvaluation();
+  if (viewId === 'payments')    initPayments();
 
   // On mobile, auto-close the sidebar after navigating so the main content is visible again.
   if (window.innerWidth <= 768) {
@@ -1022,25 +1035,201 @@ function fallbackRenderMd(text) {
 const _LLM_API_ENDPOINTS = new Set(['ask', 'mentor', 'generate', 'quiz/start', 'search']);
 
 async function api(endpoint, body) {
-  let payload = body;
-  if (body && typeof body === 'object' && _LLM_API_ENDPOINTS.has(endpoint)) {
-    payload = { ...body, llm_variant: getLlmVariant() };
+  let payload = body || {};
+  if (typeof payload === 'object' && _LLM_API_ENDPOINTS.has(endpoint)) {
+    payload = { ...payload, llm_variant: getLlmVariant() };
   }
+  if (typeof payload === 'object' && !payload.user_id && STATE.userId) {
+    payload.user_id = STATE.userId;
+  }
+  
+  const headers = {'Content-Type':'application/json'};
+  if (STATE.userId) {
+    headers['X-User-ID'] = STATE.userId;
+  }
+  
   const res = await fetch('/api/' + endpoint, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
+    method: 'POST',
+    headers: headers,
     body: JSON.stringify(payload),
   });
+  
+  if (res.status === 429 || res.status === 403) {
+    let msg = `Access denied (${res.status})`;
+    try {
+      const data = await res.json();
+      msg = data.detail || data.message || msg;
+    } catch (_) {}
+    showPaymentsAlert(msg);
+    go('payments');
+    throw new Error(msg);
+  }
+  
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.detail || data.message || `Request failed (${res.status})`);
   return data;
 }
 
 async function get(endpoint) {
-  const res = await fetch('/api/' + endpoint);
+  const headers = {};
+  if (STATE.userId) {
+    headers['X-User-ID'] = STATE.userId;
+  }
+  const res = await fetch('/api/' + endpoint, {
+    headers: headers
+  });
+  
+  if (res.status === 429 || res.status === 403) {
+    let msg = `Access denied (${res.status})`;
+    try {
+      const data = await res.json();
+      msg = data.detail || data.message || msg;
+    } catch (_) {}
+    showPaymentsAlert(msg);
+    go('payments');
+    throw new Error(msg);
+  }
+  
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.detail || data.message || `Request failed (${res.status})`);
   return data;
+}
+
+function showPaymentsAlert(msg) {
+  const banner = el('paymentsAlertBanner');
+  if (banner) {
+    banner.textContent = msg;
+    banner.style.display = 'flex';
+    banner.style.transform = 'scale(1.02)';
+    setTimeout(() => { banner.style.transform = ''; }, 200);
+    const view = el('viewPayments');
+    if (view) {
+      view.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+}
+
+async function initPayments() {
+  const grid = el('usageStatsGrid');
+  if (!grid) return;
+  
+  grid.innerHTML = '<div class="skeleton-block"></div>';
+  
+  try {
+    const data = await get('users/profile');
+    STATE.tier = data.tier;
+    
+    // Sync sidebar upgrade card
+    const upCard = el('sidebarUpgradeCard');
+    if (upCard) {
+      upCard.style.display = data.tier === 'free' ? 'flex' : 'none';
+    }
+    
+    // Sync active plan buttons styling
+    const btnFree = el('btnPlanFree');
+    const btnStandard = el('btnPlanStandard');
+    const btnPremium = el('btnPlanPremium');
+    
+    const cardFree = el('planCardFree');
+    const cardStandard = el('planCardStandard');
+    const cardPremium = el('planCardPremium');
+    
+    // Reset cards and buttons
+    [cardFree, cardStandard, cardPremium].forEach(c => c?.classList.remove('active-plan'));
+    if (btnFree) { btnFree.disabled = false; btnFree.textContent = 'Switch to Freemium'; btnFree.className = 'btn btn-ghost btn-full plan-btn'; }
+    if (btnStandard) { btnStandard.disabled = false; btnStandard.textContent = 'Upgrade to Standard'; btnStandard.className = 'btn btn-primary btn-full plan-btn'; }
+    if (btnPremium) { btnPremium.disabled = false; btnPremium.textContent = 'Upgrade to Premium'; btnPremium.className = 'btn btn-premium btn-full plan-btn'; }
+    
+    if (data.tier === 'free') {
+      cardFree?.classList.add('active-plan');
+      if (btnFree) { btnFree.disabled = true; btnFree.textContent = 'Active Plan'; btnFree.className = 'btn btn-secondary btn-full plan-btn'; }
+    } else if (data.tier === 'standard') {
+      cardStandard?.classList.add('active-plan');
+      if (btnStandard) { btnStandard.disabled = true; btnStandard.textContent = 'Active Plan'; btnStandard.className = 'btn btn-secondary btn-full plan-btn'; }
+    } else if (data.tier === 'premium') {
+      cardPremium?.classList.add('active-plan');
+      if (btnPremium) { btnPremium.disabled = true; btnPremium.textContent = 'Active Plan'; btnPremium.className = 'btn btn-secondary btn-full plan-btn'; }
+    }
+    
+    // Render progress bars
+    grid.innerHTML = '';
+    const features = [
+      { key: 'rag', label: 'Ask AI (RAG)', icon: '💬' },
+      { key: 'quiz', label: 'Quizzes & Mock Tests', icon: '❓' },
+      { key: 'flashcard', label: 'Flashcards', icon: '🎴' },
+      { key: 'summary', label: 'Summaries', icon: '📝' }
+    ];
+    
+    features.forEach(f => {
+      const usage = data.usage[f.key];
+      const used = usage.used;
+      const limit = usage.limit;
+      const tierLabel = data.tier === 'free' ? `${used} / ${limit}` : `${used} / ∞`;
+      const pct = data.tier === 'free' ? Math.min(100, (used / limit) * 100) : 0;
+      
+      let statusClass = 'safe';
+      if (data.tier === 'free') {
+        if (pct >= 90) statusClass = 'danger';
+        else if (pct >= 50) statusClass = 'warn';
+      }
+      
+      const card = document.createElement('div');
+      card.className = 'usage-stat-card';
+      card.innerHTML = `
+        <div class="usage-stat-header">
+          <span>${f.icon} ${f.label}</span>
+          <span>${tierLabel}</span>
+        </div>
+        <div class="usage-stat-val">${used}</div>
+        <div class="usage-bar-track">
+          <div class="usage-bar-fill ${statusClass}" style="width: ${pct}%"></div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Failed to load profile details:', err);
+    grid.innerHTML = `<div class="error-state"><p>Error loading daily usage: ${err.message}</p></div>`;
+  }
+}
+
+async function subscribeToPlan(tier) {
+  if (!STATE.userId) {
+    alert('Please sign in first.');
+    return;
+  }
+  
+  let btnId = '';
+  if (tier === 'standard') btnId = 'btnPlanStandard';
+  else if (tier === 'premium') btnId = 'btnPlanPremium';
+  else if (tier === 'free') btnId = 'btnPlanFree';
+  
+  if (btnId) setBtnLoading(btnId, true);
+  
+  try {
+    const res = await api('payments/subscribe', { user_id: STATE.userId, tier: tier });
+    STATE.tier = res.tier;
+    
+    const alertBanner = el('paymentsAlertBanner');
+    if (alertBanner) {
+      alertBanner.style.display = 'none';
+      alertBanner.textContent = '';
+    }
+    
+    await initPayments();
+    
+    const card = el(`planCard${cap(tier)}`);
+    if (card) {
+      card.style.transform = 'scale(1.03)';
+      setTimeout(() => { card.style.transform = ''; }, 300);
+    }
+    
+    updateUserUI();
+  } catch (err) {
+    alert(`Failed to subscribe: ${err.message}`);
+  } finally {
+    if (btnId) setBtnLoading(btnId, false);
+  }
 }
 
 // ── SEARCH ENGINE ─────────────────────────────────────────────

@@ -29,6 +29,14 @@ class User(Base):
     daily_xp = Column(Integer, default=0)
     last_active = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # Monetization and Tiered Infrastructure Columns
+    tier = Column(String, default="free")  # free | premium
+    daily_rag_count = Column(Integer, default=0)
+    daily_quiz_count = Column(Integer, default=0)
+    daily_summary_count = Column(Integer, default=0)
+    daily_flashcard_count = Column(Integer, default=0)
+    last_request_reset = Column(String, nullable=True)
+
     __table_args__ = (
         Index("ix_users_daily_xp", "daily_xp"),
     )
